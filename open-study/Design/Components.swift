@@ -46,35 +46,40 @@ private struct OSButtonBody: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .opacity(isEnabled ? 1 : 0.4)
             .onHover { hovering = $0 && isEnabled }
             .animation(Motion.hover, value: hovering)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .animation(Motion.fade, value: isEnabled)
     }
 
+    // Disabled buttons use explicit, readable colours rather than fading the
+    // whole button, which made labels illegible in dark mode (DESIGN.md §7).
+
     private var foreground: Color {
+        guard isEnabled else { return Theme.textDisabled }
         switch variant {
-        case .primary: Theme.onInk
-        case .secondary: Theme.textPrimary
-        case .ghost: hovering ? Theme.textPrimary : Theme.textSecondary
-        case .destructive: Theme.danger
+        case .primary: return Theme.onInk
+        case .secondary: return Theme.textPrimary
+        case .ghost: return hovering ? Theme.textPrimary : Theme.textSecondary
+        case .destructive: return Theme.danger
         }
     }
 
     private var background: Color {
         switch variant {
-        case .primary: Theme.ink.opacity(hovering ? 0.88 : 1)
-        case .secondary: hovering ? Theme.hover : Theme.raised
-        case .ghost: hovering ? Theme.hover : .clear
-        case .destructive: hovering ? Theme.danger.opacity(0.08) : .clear
+        case .primary: return isEnabled ? Theme.ink.opacity(hovering ? 0.88 : 1) : Theme.muted
+        case .secondary: return isEnabled && hovering ? Theme.hover : Theme.raised
+        case .ghost: return isEnabled && hovering ? Theme.hover : .clear
+        case .destructive: return isEnabled && hovering ? Theme.danger.opacity(0.08) : .clear
         }
     }
 
     private var stroke: Color? {
         switch variant {
-        case .secondary: Theme.border
-        case .destructive: Theme.danger.opacity(0.3)
-        default: nil
+        case .primary: return isEnabled ? nil : Theme.border
+        case .secondary: return Theme.border
+        case .destructive: return isEnabled ? Theme.danger.opacity(0.3) : Theme.border
+        case .ghost: return nil
         }
     }
 }
@@ -477,10 +482,16 @@ struct OSFieldStyle: TextFieldStyle {
             .textFieldStyle(.plain)
             .font(Typo.body)
             .padding(.horizontal, 10)
+            .padding(.vertical, 7)
             .frame(minHeight: 30)
             .background(Theme.raised, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous).strokeBorder(Theme.border))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous).strokeBorder(Theme.inputBorder))
     }
+}
+
+/// Placeholder text using the design system's placeholder colour.
+func placeholder(_ text: String) -> Text {
+    Text(text).foregroundStyle(Theme.placeholder)
 }
 
 extension TextFieldStyle where Self == OSFieldStyle {

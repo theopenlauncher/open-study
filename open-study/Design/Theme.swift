@@ -51,6 +51,12 @@ enum Theme {
     static let textPrimary = Color.dynamic(light: 0x1E1C19, dark: 0xEDEBE6)
     static let textSecondary = Color.dynamic(light: 0x6A655C, dark: 0xA9A39A)
     static let textTertiary = Color.dynamic(light: 0x9A948A, dark: 0x77726A)
+    /// Labels on disabled controls: clearly inactive but still readable (≥ 3:1).
+    static let textDisabled = Color.dynamic(light: 0x8C867C, dark: 0x8F8A82)
+    /// Placeholder text in fields: readable, but clearly not entered text.
+    static let placeholder = Color.dynamic(light: 0xA49E94, dark: 0x85807A)
+    /// Text field borders — one step stronger than `border` so inputs read on every surface.
+    static let inputBorder = Color.dynamic(light: 0xE0DBD1, dark: 0x4A4743)
 
     // Ink & accent
     static let ink = Color.dynamic(light: 0x1E1C19, dark: 0xEDEBE6)

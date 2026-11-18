@@ -43,6 +43,7 @@ struct ContentView: View {
         #if DEBUG
         .task {
             guard UISnapshotHarness.isEnabled else { return }
+            UISnapshotHarness.container = context.container
             UISnapshotHarness.seed(context)
             await UISnapshotHarness.run(router: router) {
                 try? context.fetch(FetchDescriptor<Subject>(sortBy: [SortDescriptor(\.sortIndex)])).first?.id

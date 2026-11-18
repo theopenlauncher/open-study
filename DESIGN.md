@@ -49,7 +49,8 @@ All colours are defined as dynamic light/dark pairs in `Theme.swift`. Light mode
 | `sidebarActive` | `#E9E5DC` | `#2F2D2A` | Sidebar active pill. Sampled `#EEEBE3`, deepened one step for contrast on `#F6F4F0`. |
 | `hover` | `#F4F2ED` | `#2B2A27` | Hover fill for rows/buttons *inside* the workspace. |
 | `border` | `#E9E5DD` | `#34322F` | Hairlines: card borders, separators, input borders. |
-| `borderStrong` | `#D9D3C8` | `#45423E` | Input borders on focus-adjacent states, drag targets, dividers that must be visible. |
+| `borderStrong` | `#D9D3C8` | `#45423E` | Hover borders on cards, drag targets, dividers that must be visible. |
+| `inputBorder` | `#E0DBD1` | `#4A4743` | Text field borders — one step stronger than `border` so fields stay visible on dark sheets. |
 
 ### 2.2 Text
 
@@ -57,7 +58,9 @@ All colours are defined as dynamic light/dark pairs in `Theme.swift`. Light mode
 | --- | --- | --- | --- | --- |
 | `textPrimary` | `#1E1C19` | `#EDEBE6` | Titles, body, active nav. Sampled `#26221D`/`#181818`. | 16.4 : 1 |
 | `textSecondary` | `#6A655C` | `#A9A39A` | Secondary labels, metadata, inactive nav icons. | 5.6 : 1 (AA) |
-| `textTertiary` | `#9A948A` | `#77726A` | Placeholders, section labels, disabled. Never for essential information. | 3.0 : 1 (large/UI only) |
+| `textTertiary` | `#9A948A` | `#77726A` | Section labels, quiet metadata. Never for essential information. | 3.0 : 1 (large/UI only) |
+| `textDisabled` | `#8C867C` | `#8F8A82` | Labels on disabled buttons — clearly inactive, still readable. | ≥ 3 : 1 on `muted`/`raised` |
+| `placeholder` | `#A49E94` | `#85807A` | Field placeholders (set via the field's `prompt`). | — |
 
 ### 2.3 Ink & accent
 
@@ -191,11 +194,13 @@ The sidebar sits directly on `canvas` — it is not a separate panel and has no 
 | `ghost` | clear | `textSecondary` | — | `hover` fill, text → primary | Toolbar-style actions, "Add card". |
 | `destructive` | clear | `danger` | `danger` 30% | `danger` 8% fill | Delete actions inside sheets. |
 
-Pressed: scale 0.98 + 6% darker. Disabled: 40% opacity, no hover.
+Pressed: scale 0.98 + 6% darker.
+
+Disabled: **never fade the whole button** — 40% opacity made labels unreadable in dark mode. Instead the label switches to `textDisabled`; a disabled `primary` button becomes a `muted` fill with a 1pt `border` (so it no longer looks actionable but stays legible); `secondary` keeps its fill and border; no hover. When a primary action is disabled because input is missing, show a one-line `callout` hint beside it explaining why (e.g. "Fill in both sides to continue").
 
 **Icon buttons** — 28×28pt, radius 7pt, 14pt icon `textSecondary`, hover fill `hover`/`sidebarHover` depending on surface. Always have a `.help()` tooltip and accessibility label.
 
-**Text fields** (`OSFieldStyle`) — height 30pt, radius 8pt, `raised` fill, 1pt `border`, 10pt padding; focus shows the native accent focus ring. Inline/title fields (page title, block text) are **borderless** and look like plain text until hovered.
+**Text fields** (`OSFieldStyle`) — min height 30pt, radius 8pt, `raised` fill, 1pt `inputBorder`, 10pt horizontal / 7pt vertical padding (so multi-line fields don't crowd the text); focus shows the native accent focus ring. Placeholders use `placeholder(_:)` for the `prompt`. Inline/title fields (page title, block text) are **borderless** and look like plain text until hovered.
 
 **Menus** — always native `Menu`/`contextMenu` (NSMenu). Menu buttons in our chrome use the borderless `ghost` look with a chevron. Every row that can be acted on has a context menu that mirrors its "•••" menu.
 

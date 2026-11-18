@@ -420,18 +420,18 @@ struct CardEditor: View {
                       width: 520) {
             VStack(alignment: .leading, spacing: Space.lg) {
                 FieldRow(label: "Front — the question or prompt") {
-                    TextField("e.g. What is the powerhouse of the cell?", text: $front, axis: .vertical)
+                    TextField("Front", text: $front, prompt: placeholder("e.g. What is the powerhouse of the cell?"), axis: .vertical)
                         .textFieldStyle(.os)
                         .lineLimit(3...8)
                         .focused($frontFocused)
                 }
                 FieldRow(label: "Back — the answer") {
-                    TextField("e.g. The mitochondrion", text: $back, axis: .vertical)
+                    TextField("Back", text: $back, prompt: placeholder("e.g. The mitochondrion"), axis: .vertical)
                         .textFieldStyle(.os)
                         .lineLimit(3...8)
                 }
                 FieldRow(label: "Tags (optional, separated by spaces)") {
-                    TextField("e.g. cells chapter3", text: $tags).textFieldStyle(.os)
+                    TextField("Tags", text: $tags, prompt: placeholder("e.g. cells chapter3")).textFieldStyle(.os)
                 }
                 if addedCount > 0 {
                     Label("\(addedCount) card\(addedCount == 1 ? "" : "s") added", systemImage: "checkmark.circle.fill")
@@ -441,6 +441,12 @@ struct CardEditor: View {
         } footer: {
             Button("Cancel") { dismiss() }.buttonStyle(.osGhost).keyboardShortcut(.cancelAction)
             Spacer()
+            if !valid {
+                Text("Fill in both sides to continue")
+                    .font(Typo.callout)
+                    .foregroundStyle(Theme.textSecondary)
+                    .transition(.opacity)
+            }
             if card == nil {
                 Button("Add & next") { save(next: true) }
                     .buttonStyle(.osSecondary)

@@ -81,6 +81,12 @@ enum UISnapshotHarness {
             try? await Task.sleep(for: .seconds(1.2))
             capture(to: dir.appendingPathComponent("\(name).png"))
         }
+        if let container = container, let deck = try? container.mainContext.fetch(FetchDescriptor<Deck>()).first {
+            for dark in [true, false] {
+                captureStandalone(CardEditor(deck: deck, card: nil).modelContainer(container), dark: dark,
+                                  to: dir.appendingPathComponent("sheet-addcard-\(dark ? "dark" : "light").png"))
+            }
+        }
         router.selection = .home
         router.sidebarVisible = false
         try? await Task.sleep(for: .seconds(1))
@@ -99,6 +105,21 @@ enum UISnapshotHarness {
         }
         print("VIEWDUMP " + String(repeating: "  ", count: depth) + "\(type(of: v)) \(v.frame) hidden=\(v.isHidden) alpha=\(v.alphaValue)\(extra)")
         for sub in v.subviews { dump(sub, depth: depth + 1) }
+    }
+
+    static var container: ModelContainer?
+
+    /// Renders a view (e.g. a sheet's content) in an off-screen window.
+    @MainActor
+    static func captureStandalone<V: View>(_ view: V, dark: Bool, to url: URL) {
+        let host = NSHostingView(rootView: view)
+        let size = host.fittingSize
+        host.frame = NSRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        write(host, to: url)
     }
 
     @MainActor
