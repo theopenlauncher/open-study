@@ -175,7 +175,7 @@ The sidebar sits directly on `canvas` — it is not a separate panel and has no 
 
 ## 6. Navigation & active states
 
-- Selection is single-source (`AppRouter.selection`). Changing section cross-fades the workspace content (0.18s opacity) — no sliding.
+- Selection is single-source (`AppRouter.selection`). Changing section swaps the workspace content instantly — no cross-fade or sliding, so navigation never feels laggy.
 - Drill-downs inside a section (a deck's cards) use an in-page back link ("← Flashcards", `callout`, `textSecondary`) above the title rather than a toolbar back button.
 - Modal tasks with a clear end (reviewing cards, taking a quiz, importing, editing an event) use **sheets**. PDFs open in their own **window** (and inline in blocks).
 - **Focus mode** hides the sidebar and top-strip controls, leaving only the workspace card at full width. **Esc** or the "Exit" button restores the previous section.

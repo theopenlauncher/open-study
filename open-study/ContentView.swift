@@ -91,8 +91,11 @@ private struct DetailView: View {
             }
         }
         .id(router.selection)
-        .transition(.opacity)
-        .animation(Motion.fade, value: router.selection)
+        // Swap sections instantly. A cross-fade kept both screens alive and
+        // delayed the new one becoming visible; `.identity` also keeps callers
+        // that wrap the change in `withAnimation` (Focus mode) from fading it,
+        // while the sidebar still slides via ContentView's own animation.
+        .transition(.identity)
     }
 }
 
