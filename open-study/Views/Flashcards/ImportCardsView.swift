@@ -9,6 +9,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import PostHog
 
 struct ImportCardsView: View {
     let preselectedDeck: Deck?
@@ -329,6 +330,7 @@ struct ImportCardsView: View {
     }
 
     private func performImport() {
+        let createdDeck = targetDeck == nil
         var deck = targetDeck
         if deck == nil {
             let d = Deck(name: newDeckName.trimmingCharacters(in: .whitespaces))
@@ -346,6 +348,11 @@ struct ImportCardsView: View {
         do {
             try context.save()
             let skipped = candidates.count - toImport.count
+            PostHogSDK.shared.capture("flashcards_imported", properties: [
+                "card_count": toImport.count,
+                "skipped_count": skipped,
+                "created_deck": createdDeck,
+            ])
             importedSummary = "Imported \(toImport.count) into \(deck.name)" + (skipped > 0 ? " · \(skipped) skipped" : "")
             rawText = ""
             sourceName = nil

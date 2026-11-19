@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import PostHog
 
 struct ReviewSession: Identifiable {
     let id = UUID()
@@ -92,7 +93,10 @@ struct FlashcardsView: View {
                 .popover(isPresented: $showNewDeck, arrowEdge: .bottom) {
                     NewDeckForm { deck in
                         context.insert(deck)
-                        try? context.save()
+                        do {
+                            try context.save()
+                            PostHogSDK.shared.capture("deck_created", properties: ["has_subject": deck.subject != nil])
+                        } catch {}
                         showNewDeck = false
                         selectedDeckID = deck.id
                     }
@@ -638,7 +642,13 @@ struct ReviewView: View {
         SM2.apply(rating, to: card)
         let log = ReviewLog(rating: rating, card: card)
         context.insert(log)
-        try? context.save()
+        do {
+            try context.save()
+            PostHogSDK.shared.capture("flashcard_reviewed", properties: [
+                "rating": rating.rawValue,
+                "is_correct": rating.isCorrect,
+            ])
+        } catch {}
         reviewed += 1
         if rating.isCorrect { correct += 1 }
         flipped = false

@@ -12,6 +12,7 @@ import SwiftData
 import AppKit
 import UserNotifications
 import Observation
+import PostHog
 
 enum PomodoroPhase: String, CaseIterable, Identifiable {
     case focus, shortBreak, longBreak
@@ -244,7 +245,20 @@ final class PomodoroEngine {
         let session = FocusSession(startedAt: start, endedAt: Date(), seconds: seconds, completed: completed,
                                    subject: subject, taskTitle: taskTitle)
         modelContext.insert(session)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+            let durationSeconds = Int(seconds.rounded())
+            PostHogSDK.shared.capture("focus_session_logged", properties: [
+                "duration_seconds": durationSeconds,
+                "completed": completed,
+                "has_subject": subject != nil,
+            ])
+            PostHogAppLogger.focusSessionSaved(
+                durationSeconds: durationSeconds,
+                completed: completed,
+                hasSubject: subject != nil
+            )
+        } catch {}
         lastLoggedAt = Date()
     }
 

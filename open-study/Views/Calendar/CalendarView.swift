@@ -8,6 +8,7 @@
 
 import SwiftUI
 import SwiftData
+import PostHog
 
 private enum CalendarItem: Identifiable {
     case event(StudyEvent)
@@ -427,7 +428,15 @@ struct EventEditor: View {
         event.isAllDay = allDay
         event.notes = notes
         event.subject = subject
-        try? context.save()
+        do {
+            try context.save()
+            PostHogSDK.shared.capture("calendar_event_saved", properties: [
+                "event_kind": kind.rawValue,
+                "is_all_day": allDay,
+                "has_subject": subject != nil,
+                "is_new": draft.event == nil,
+            ])
+        } catch {}
         dismiss()
     }
 }
