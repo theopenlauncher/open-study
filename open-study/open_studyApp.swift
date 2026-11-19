@@ -17,20 +17,8 @@ struct open_studyApp: App {
     private let container: Result<ModelContainer, Error>
 
     init() {
-        let projectToken = ProcessInfo.processInfo.environment["POSTHOG_PROJECT_TOKEN"] ?? "phc_wMBzHUbz4gcZhf5qPrXHdFXFNG6hmXy6csrwUZEHEB39"
-        let host = ProcessInfo.processInfo.environment["POSTHOG_HOST"] ?? "https://us.i.posthog.com"
-        let postHogConfig = PostHogConfig(projectToken: projectToken, host: host)
-        postHogConfig.errorTrackingConfig.autoCapture = true
-        postHogConfig.logs.serviceName = "open-study"
-        #if DEBUG
-        postHogConfig.logs.environment = "development"
-        #else
-        postHogConfig.logs.environment = "production"
-        #endif
         PrefKey.registerDefaults()
-        postHogConfig.optOut = !Analytics.isEnabled
-        PostHogSDK.shared.setup(postHogConfig)
-        Analytics.syncWithPreference()
+        Analytics.start()
         PostHogAppLogger.appStarted()
 
         do {
