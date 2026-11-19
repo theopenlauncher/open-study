@@ -38,12 +38,14 @@ enum PrefKey {
     static let dailyGoalMinutes = "dailyGoalMinutes"
     static let appearance = "appearance"
     static let sidebarVisible = "sidebarVisible"
+    static let analyticsEnabled = "analyticsEnabled"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, longBreakEvery: 4,
             autoStartBreaks: true, autoStartFocus: false, playSound: true, notificationsEnabled: true,
             dailyGoalMinutes: 120, appearance: "system", sidebarVisible: true,
+            analyticsEnabled: true,
         ])
     }
 }

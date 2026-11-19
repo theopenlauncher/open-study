@@ -6,23 +6,28 @@
 import PostHog
 
 enum PostHogAppLogger {
+    /// Nil when the user has turned off usage data, so no log records are sent.
+    private static var logger: PostHogLogger? {
+        Analytics.isEnabled ? PostHogSDK.shared.logger : nil
+    }
+
     static func appStarted() {
-        PostHogSDK.shared.logger?.info(
+        logger?.info(
             "app_started",
             attributes: ["app_runtime": "macos"]
         )
     }
 
     static func studyStoreInitialized() {
-        PostHogSDK.shared.logger?.info("study_store_initialized")
+        logger?.info("study_store_initialized")
     }
 
     static func studyStoreInitializationFailed() {
-        PostHogSDK.shared.logger?.error("study_store_initialization_failed")
+        logger?.error("study_store_initialization_failed")
     }
 
     static func focusSessionSaved(durationSeconds: Int, completed: Bool, hasSubject: Bool) {
-        PostHogSDK.shared.logger?.info(
+        logger?.info(
             "focus_session_saved",
             attributes: [
                 "duration_seconds": durationSeconds,

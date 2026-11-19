@@ -27,10 +27,12 @@ struct open_studyApp: App {
         #else
         postHogConfig.logs.environment = "production"
         #endif
+        PrefKey.registerDefaults()
+        postHogConfig.optOut = !Analytics.isEnabled
         PostHogSDK.shared.setup(postHogConfig)
+        Analytics.syncWithPreference()
         PostHogAppLogger.appStarted()
 
-        PrefKey.registerDefaults()
         do {
             let schema = Schema(AppSchema.models)
             var config = ModelConfiguration(schema: schema, url: AppPaths.storeURL, cloudKitDatabase: .none)
