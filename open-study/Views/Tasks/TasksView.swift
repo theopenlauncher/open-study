@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import PostHog
 
 enum TaskFilter: String, CaseIterable { case open, completed, all }
 enum TaskSort: String, CaseIterable {
@@ -72,7 +73,14 @@ struct TasksView: View {
 
             NewTaskBar(subjects: subjects, defaultSubjectID: subjectFilter) { task in
                 context.insert(task)
-                try? context.save()
+                do {
+                    try context.save()
+                    PostHogSDK.shared.capture("task_created", properties: [
+                        "has_due_date": task.dueDate != nil,
+                        "has_subject": task.subject != nil,
+                        "priority": task.priorityRaw,
+                    ])
+                } catch {}
             }
             .padding(.bottom, Space.lg)
 

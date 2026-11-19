@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import Charts
+import PostHog
 
 struct WidgetCard<Trailing: View, Content: View>: View {
     let symbol: String
@@ -94,7 +95,14 @@ struct TaskListBlockView: View {
             NewTaskBar(subjects: [], lockedSubject: block.subject) { task in
                 context.insert(task)
                 task.block = block
-                try? context.save()
+                do {
+                    try context.save()
+                    PostHogSDK.shared.capture("task_created", properties: [
+                        "has_due_date": task.dueDate != nil,
+                        "has_subject": task.subject != nil,
+                        "priority": task.priorityRaw,
+                    ])
+                } catch {}
             }
             .padding(Space.md)
         }

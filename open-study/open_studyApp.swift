@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import PostHog
 
 @main
 struct open_studyApp: App {
@@ -17,6 +18,9 @@ struct open_studyApp: App {
 
     init() {
         PrefKey.registerDefaults()
+        Analytics.start()
+        PostHogAppLogger.appStarted()
+
         do {
             let schema = Schema(AppSchema.models)
             var config = ModelConfiguration(schema: schema, url: AppPaths.storeURL, cloudKitDatabase: .none)
@@ -26,8 +30,10 @@ struct open_studyApp: App {
             }
             #endif
             container = .success(try ModelContainer(for: schema, configurations: config))
+            PostHogAppLogger.studyStoreInitialized()
         } catch {
             container = .failure(error)
+            PostHogAppLogger.studyStoreInitializationFailed()
         }
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
     }

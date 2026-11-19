@@ -12,6 +12,7 @@
 
 import Foundation
 import SwiftData
+import PostHog
 
 // MARK: - Subject
 
@@ -228,6 +229,13 @@ final class TaskItem {
     func toggle() {
         isDone.toggle()
         completedAt = isDone ? Date() : nil
+        if isDone {
+            PostHogSDK.shared.capture("task_completed", properties: [
+                "has_due_date": dueDate != nil,
+                "has_subject": subject != nil,
+                "priority": priorityRaw,
+            ])
+        }
     }
 }
 

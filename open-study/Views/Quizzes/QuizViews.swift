@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import PostHog
 
 struct QuizzesListView: View {
     @Environment(\.modelContext) private var context
@@ -403,7 +404,14 @@ struct QuizRunnerView: View {
             let attempt = QuizAttempt(score: score, total: questions.count)
             context.insert(attempt)
             attempt.quiz = quiz
-            try? context.save()
+            do {
+                try context.save()
+                PostHogSDK.shared.capture("quiz_completed", properties: [
+                    "score": score,
+                    "total_questions": questions.count,
+                    "score_percent": Int((Double(score) / Double(max(1, questions.count)) * 100).rounded()),
+                ])
+            } catch {}
         }
     }
 

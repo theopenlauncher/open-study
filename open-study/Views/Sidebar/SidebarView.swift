@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import PostHog
 
 struct SidebarView: View {
     @Environment(AppRouter.self) private var router
@@ -199,7 +200,10 @@ struct SidebarView: View {
     private func createSubject(name: String, symbol: String, color: String) {
         let subject = Subject(name: name, symbol: symbol, colorKey: color, sortIndex: (subjects.map(\.sortIndex).max() ?? -1) + 1)
         context.insert(subject)
-        try? context.save()
+        do {
+            try context.save()
+            PostHogSDK.shared.capture("subject_created")
+        } catch {}
         router.selection = .subject(subject.id)
     }
 

@@ -22,6 +22,7 @@ struct SettingsView: View {
     @AppStorage(PrefKey.notificationsEnabled) private var notifications = true
     @AppStorage(PrefKey.dailyGoalMinutes) private var dailyGoal = 120
     @AppStorage(PrefKey.appearance) private var appearance = "system"
+    @AppStorage(PrefKey.analyticsEnabled) private var analyticsEnabled = true
     @State private var authStatus: UNAuthorizationStatus = .notDetermined
 
     var body: some View {
@@ -99,6 +100,12 @@ struct SettingsView: View {
                 Button("Show Data Folder in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([AppPaths.supportDirectory])
                 }
+            }
+            Section("Privacy") {
+                Toggle("Share anonymous usage data", isOn: $analyticsEnabled)
+                    .onChange(of: analyticsEnabled) { _, on in Analytics.setEnabled(on) }
+                Text("Sends counts and on/off details (for example, \"a task was completed\") and crash reports to help improve Open Study. Your notes, card text, task titles and files never leave this Mac.")
+                    .font(Typo.callout).foregroundStyle(Theme.textTertiary)
             }
         }
         .formStyle(.grouped)
