@@ -389,16 +389,33 @@ final class NoteTextView: NSTextView {
     var placeholder = ""
     var onFocusChange: ((Bool) -> Void)?
 
-    override var intrinsicContentSize: NSSize {
-        guard let lm = layoutManager, let tc = textContainer else { return super.intrinsicContentSize }
+    /// Last measured height. Returned from `intrinsicContentSize` so SwiftUI
+    /// layout passes don't re-run text layout.
+    private var cachedHeight: CGFloat?
+
+    private func measuredHeight() -> CGFloat {
+        guard let lm = layoutManager, let tc = textContainer else { return 24 }
         lm.ensureLayout(for: tc)
         let used = lm.usedRect(for: tc).height
-        return NSSize(width: NSView.noIntrinsicMetric, height: max(24, ceil(used + textContainerInset.height * 2)))
+        return max(24, ceil(used + textContainerInset.height * 2))
+    }
+
+    override var intrinsicContentSize: NSSize {
+        guard layoutManager != nil else { return super.intrinsicContentSize }
+        let height = cachedHeight ?? measuredHeight()
+        cachedHeight = height
+        return NSSize(width: NSView.noIntrinsicMetric, height: height)
     }
 
     override func didChangeText() {
         super.didChangeText()
-        invalidateIntrinsicContentSize()
+        // Only ask SwiftUI to re-layout the page when the note actually grows
+        // or shrinks; most keystrokes don't change the height.
+        let height = measuredHeight()
+        if height != cachedHeight {
+            cachedHeight = height
+            invalidateIntrinsicContentSize()
+        }
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -406,7 +423,11 @@ final class NoteTextView: NSTextView {
         super.setFrameSize(newSize)
         if widthChanged {
             textContainer?.size = NSSize(width: newSize.width - textContainerInset.width * 2, height: .greatestFiniteMagnitude)
-            invalidateIntrinsicContentSize()
+            let height = measuredHeight()
+            if height != cachedHeight {
+                cachedHeight = height
+                invalidateIntrinsicContentSize()
+            }
         }
     }
 

@@ -103,9 +103,9 @@ struct ChecklistBlockView: View {
     @State private var draft = ""
     @FocusState private var draftFocused: Bool
 
-    private var items: [ChecklistEntry] { block.checklist }
-
     var body: some View {
+        // Decode the JSON payload once per render, not once per access.
+        let items = block.checklist
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 TextField("Checklist", text: $block.title)
@@ -142,6 +142,8 @@ struct ChecklistBlockView: View {
         HStack(spacing: 10) {
             SquareCheckbox(isOn: item.done) { update(item.id) { $0.done.toggle() } }
             TextField("Item", text: Binding(
+                // Read the stored entry, not the captured row value, so the
+                // field never sees pre-edit text between a keystroke and re-render.
                 get: { block.checklist.first { $0.id == item.id }?.text ?? "" },
                 set: { new in update(item.id) { $0.text = new } }
             ))

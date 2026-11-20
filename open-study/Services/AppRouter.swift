@@ -9,6 +9,7 @@ import Observation
 enum SidebarItem: Hashable {
     case home, calendar, tasks, flashcards, statistics, focus, settings
     case subject(UUID)
+    case page(UUID)
 
     static let global: [SidebarItem] = [.home, .calendar, .tasks, .flashcards, .statistics, .focus]
 
@@ -22,6 +23,7 @@ enum SidebarItem: Hashable {
         case .focus: "Focus"
         case .settings: "Settings"
         case .subject: "Subject"
+        case .page: "Page"
         }
     }
 
@@ -35,6 +37,7 @@ enum SidebarItem: Hashable {
         case .focus: "timer"
         case .settings: "gearshape"
         case .subject: "book.closed"
+        case .page: "doc.text"
         }
     }
 }
@@ -53,6 +56,19 @@ final class AppRouter {
     /// Triggers the "new subject" popover in the sidebar.
     var showNewSubject = false
     private(set) var lastNonFocus: SidebarItem = .home
+
+    /// Subjects whose topic pages are listed in the sidebar (persisted).
+    var expandedSubjects: Set<UUID> = Set(
+        (UserDefaults.standard.stringArray(forKey: "sidebar.expandedSubjects") ?? []).compactMap(UUID.init)
+    ) {
+        didSet {
+            #if DEBUG
+            // Snapshot runs use throwaway in-memory data; keep it out of real prefs.
+            if UISnapshotHarness.isEnabled { return }
+            #endif
+            UserDefaults.standard.set(expandedSubjects.map(\.uuidString), forKey: "sidebar.expandedSubjects")
+        }
+    }
 
     var isFocusMode: Bool { selection == .focus }
 

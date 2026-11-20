@@ -88,6 +88,7 @@ private struct DetailView: View {
             case .focus: FocusView()
             case .settings: SettingsView()
             case .subject(let id): SubjectPageLoader(subjectID: id)
+            case .page(let id): TopicPageLoader(pageID: id)
             }
         }
         .id(router.selection)

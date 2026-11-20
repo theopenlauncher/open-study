@@ -48,6 +48,12 @@ enum UISnapshotHarness {
         cl.widthFraction = 0.5
         let sb = block(.statistics, 7, physics); sb.widthFraction = 0.5
 
+        let entropy = TopicPage(title: "Entropy", symbol: "flame", sortIndex: 0); context.insert(entropy); entropy.subject = physics
+        let waves = TopicPage(title: "Waves", symbol: "waveform", sortIndex: 1); context.insert(waves); waves.subject = physics
+        let eh = block(.heading, 0, physics); eh.page = entropy; eh.text = "Second law"; eh.level = 2
+        let et = block(.text, 1, physics); et.page = entropy
+        et.text = "Entropy of an isolated system never decreases."; et.richData = NoteCodec.make(plain: et.text)
+
         let task = TaskItem(title: "Titration lab report", subject: chem, dueDate: cal.date(byAdding: .day, value: -1, to: today), priority: .high)
         context.insert(task)
         let exam = StudyEvent(title: "Physics Paper 1", kind: .exam, start: cal.date(byAdding: .day, value: 12, to: today)!.addingTimeInterval(9 * 3600),
@@ -75,6 +81,9 @@ enum UISnapshotHarness {
         var shots: [(String, SidebarItem)] = [("home", .home), ("calendar", .calendar), ("tasks", .tasks), ("flashcards", .flashcards),
                                               ("statistics", .statistics), ("settings", .settings)]
         if let id = subjectID() { shots.insert(("subject", .subject(id)), at: 1) }
+        if let page = try? container?.mainContext.fetch(FetchDescriptor<TopicPage>(sortBy: [SortDescriptor(\.sortIndex)])).first {
+            shots.insert(("page", .page(page.id)), at: 2)
+        }
         shots.append(("focus", .focus))
         for (name, item) in shots {
             router.selection = item

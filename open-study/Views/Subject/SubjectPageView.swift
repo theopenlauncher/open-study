@@ -2,8 +2,9 @@
 //  SubjectPageView.swift
 //  open-study
 //
-//  A subject's Notion-style page: an editable title above a column of
-//  user-built blocks. New subjects start completely blank.
+//  A subject's Notion-style page: an editable title, its topic pages, then a
+//  column of user-built blocks. New subjects start completely blank.
+//  `BlockCanvas` holds the block editing shared with topic pages.
 //
 
 import SwiftUI
@@ -38,8 +39,120 @@ struct BlockPageActions {
     var requestDelete: (Block) -> Void
 }
 
+/// What a block canvas edits: the subject's own page or one of its topic pages.
+enum BlockOwner {
+    case subject(Subject)
+    case page(TopicPage)
+
+    var sortedBlocks: [Block] {
+        switch self {
+        case .subject(let s): s.sortedBlocks
+        case .page(let p): p.sortedBlocks
+        }
+    }
+
+    /// Links a new block to its page. Topic-page blocks also point at the
+    /// subject so subject-scoped widgets keep working.
+    func attach(_ block: Block) {
+        switch self {
+        case .subject(let s): block.subject = s
+        case .page(let p):
+            block.page = p
+            block.subject = p.subject
+        }
+    }
+}
+
 struct SubjectPageView: View {
+    let subject: Subject
+    var body: some View {
+        BlockCanvas(owner: .subject(subject),
+                    emptyHint: "This page is empty. Press / or click + to add your first block — notes, flashcards, tasks, a PDF and more. Use pages above to split the subject into topics.") {
+            SubjectPageHeader(subject: subject)
+        }
+    }
+}
+
+/// Kept in its own view so typing in the title doesn't re-render every block.
+private struct SubjectPageHeader: View {
     @Bindable var subject: Subject
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            Image(systemName: subject.symbol)
+                .font(.system(size: 30))
+                .foregroundStyle(SubjectColor.from(subject.colorKey).color)
+                .frame(height: 36)
+            TextField("Untitled subject", text: $subject.name, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 36, weight: .regular, design: .serif))
+                .foregroundStyle(Theme.textPrimary)
+            SubjectTopicList(subject: subject)
+                .padding(.top, Space.sm)
+        }
+    }
+}
+
+/// The subject's topic pages, shown under its title.
+private struct SubjectTopicList: View {
+    let subject: Subject
+    @Environment(AppRouter.self) private var router
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        let pages = subject.sortedPages
+        VStack(alignment: .leading, spacing: 2) {
+            if !pages.isEmpty {
+                SectionLabel("Pages").padding(.bottom, Space.xs)
+                ForEach(pages) { page in
+                    Button { router.selection = .page(page.id) } label: {
+                        HStack(spacing: Space.sm) {
+                            Image(systemName: page.symbol)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.textSecondary)
+                                .frame(width: 18)
+                            Text(page.displayTitle)
+                                .font(Typo.reading)
+                                .foregroundStyle(page.title.isEmpty ? Theme.textTertiary : Theme.textPrimary)
+                                .underline(color: Theme.border)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 6)
+                        .frame(height: 30)
+                        .contentShape(Rectangle())
+                        .hoverHighlight(cornerRadius: 6)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, -6)
+                }
+            }
+            Button { TopicPages.create(in: subject, context: context, router: router) } label: {
+                HStack(spacing: Space.sm) {
+                    Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: 18)
+                    Text(pages.isEmpty ? "Add a page for a topic" : "New page").font(Typo.body)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(Theme.textTertiary)
+                .padding(.horizontal, 6)
+                .frame(height: 28)
+                .contentShape(Rectangle())
+                .hoverHighlight(cornerRadius: 6)
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, -6)
+            .help("Create a page inside this subject")
+        }
+        .frame(maxWidth: 420, alignment: .leading)
+    }
+}
+
+/// A Notion-style column of user-built blocks under a header. Used by the
+/// subject page and topic pages.
+struct BlockCanvas<Header: View>: View {
+    let owner: BlockOwner
+    let emptyHint: String
+    @ViewBuilder let header: () -> Header
     @Environment(\.modelContext) private var context
 
     @State private var formatter = NoteFormatter()
@@ -52,17 +165,27 @@ struct SubjectPageView: View {
     @State private var endDropTargeted = false
     @FocusState private var trailingFocused: Bool
 
-    private var blocks: [Block] { subject.sortedBlocks }
+    private var blocks: [Block] { owner.sortedBlocks }
 
     var body: some View {
+        // Sort once per render; the layout helpers below reuse it.
+        let ordered = blocks
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    header
-                        .padding(.bottom, Space.x3)
+                    header()
+                        .padding(.bottom, ordered.isEmpty ? Space.lg : Space.x3)
+
+                    if ordered.isEmpty {
+                        Text(emptyHint)
+                            .font(Typo.body)
+                            .foregroundStyle(Theme.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.bottom, Space.lg)
+                    }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        ForEach(rows(), id: \.first!.id) { row in
+                        ForEach(rows(ordered), id: \.first!.id) { row in
                             HStack(alignment: .top, spacing: Space.lg) {
                                 ForEach(row) { block in
                                     BlockContainer(block: block, columnWidth: columnWidth, inserterAnchor: $inserterAnchor,
@@ -79,7 +202,7 @@ struct SubjectPageView: View {
                     }
 
                     trailingInput
-                        .padding(.top, blocks.isEmpty ? 0 : Space.md)
+                        .padding(.top, ordered.isEmpty ? 0 : Space.md)
                 }
                 .frame(maxWidth: Layout.readingWidth, alignment: .leading)
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { columnWidth = $0 }
@@ -105,27 +228,6 @@ struct SubjectPageView: View {
             }
         } message: {
             Text(deleteMessage)
-        }
-    }
-
-    // MARK: Header
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: Space.md) {
-            Image(systemName: subject.symbol)
-                .font(.system(size: 30))
-                .foregroundStyle(SubjectColor.from(subject.colorKey).color)
-                .frame(height: 36)
-            TextField("Untitled subject", text: $subject.name, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.system(size: 36, weight: .regular, design: .serif))
-                .foregroundStyle(Theme.textPrimary)
-            if blocks.isEmpty {
-                Text("This page is empty. Press / or click + to add your first block — notes, flashcards, tasks, a PDF and more.")
-                    .font(Typo.body)
-                    .foregroundStyle(Theme.textTertiary)
-                    .padding(.top, Space.xs)
-            }
         }
     }
 
@@ -185,7 +287,7 @@ struct SubjectPageView: View {
     // MARK: Layout
 
     /// Packs blocks into rows while their width fractions sum to ≤ 1.
-    private func rows() -> [[Block]] {
+    private func rows(_ blocks: [Block]) -> [[Block]] {
         var result: [[Block]] = []
         var current: [Block] = []
         var sum = 0.0
@@ -231,7 +333,7 @@ struct SubjectPageView: View {
         var ordered = blocks
         let block = Block(kind: kind, sortIndex: 0)
         context.insert(block)
-        block.subject = subject
+        owner.attach(block)
         let index = after.flatMap { a in ordered.firstIndex(where: { $0.id == a.id }) }.map { $0 + 1 } ?? ordered.count
         // Match the width of the block we insert after so side-by-side layouts stay intact.
         if let after, kind.supportsWidth, after.kind.supportsWidth, after.widthFraction < 1 {
