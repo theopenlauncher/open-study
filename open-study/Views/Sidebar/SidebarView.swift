@@ -284,7 +284,11 @@ struct SidebarView: View {
     }
 
     private func deleteSubject(_ subject: Subject) {
-        if router.selection == .subject(subject.id) { router.selection = .home }
+        // Leave the subject's page or any of its topic pages before deleting them.
+        let showingThisSubject = router.selection == .subject(subject.id)
+            || subject.pages.contains { router.selection == .page($0.id) }
+        if showingThisSubject { router.selection = .home }
+        router.expandedSubjects.remove(subject.id)
         context.delete(subject)
         try? context.save()
         subjectToDelete = nil

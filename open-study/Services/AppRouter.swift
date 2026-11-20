@@ -61,7 +61,13 @@ final class AppRouter {
     var expandedSubjects: Set<UUID> = Set(
         (UserDefaults.standard.stringArray(forKey: "sidebar.expandedSubjects") ?? []).compactMap(UUID.init)
     ) {
-        didSet { UserDefaults.standard.set(expandedSubjects.map(\.uuidString), forKey: "sidebar.expandedSubjects") }
+        didSet {
+            #if DEBUG
+            // Snapshot runs use throwaway in-memory data; keep it out of real prefs.
+            if UISnapshotHarness.isEnabled { return }
+            #endif
+            UserDefaults.standard.set(expandedSubjects.map(\.uuidString), forKey: "sidebar.expandedSubjects")
+        }
     }
 
     var isFocusMode: Bool { selection == .focus }
