@@ -40,12 +40,28 @@ enum TopicPages {
         try? context.save()
     }
 
-    /// Reorders within a subject, or moves the page to another subject when
-    /// `target` is nil and `subject` differs from the page's current one.
+    /// Reorders within a subject, or moves the page into `subject` when it
+    /// belongs to another one.
+    ///
+    /// Moving between subjects, what follows the page:
+    /// - its blocks;
+    /// - tasks in its task lists that still belong to the old subject (task
+    ///   lists add tasks under the block's subject, so the list stays in one
+    ///   subject and both subjects' statistics stay consistent). Tasks the
+    ///   user assigned to some other subject keep that choice.
+    ///
+    /// What stays put: decks, quizzes and documents (they can be shared with
+    /// other pages) and history (focus sessions, review logs).
     static func move(_ page: TopicPage, to subject: Subject, before target: TopicPage?) {
         if page.subject?.id != subject.id {
+            let oldSubjectID = page.subject?.id
             page.subject = subject
-            for block in page.blocks { block.subject = subject }
+            for block in page.blocks {
+                block.subject = subject
+                for task in block.tasks where task.subject?.id == oldSubjectID {
+                    task.subject = subject
+                }
+            }
         }
         var ordered = subject.sortedPages.filter { $0.id != page.id }
         let index = target.flatMap { t in ordered.firstIndex(where: { $0.id == t.id }) } ?? ordered.count
@@ -67,5 +83,4 @@ enum TopicPages {
         }
     }
 
-    static let deleteMessage = "The page and its blocks will be deleted. Tasks, flashcard decks, quizzes and documents used on it are kept."
-}
+    static let deleteMessage = "The page and its blocks will be deleted. Tasks, flashcard decks, quizzes and documents used on it are kept."}
