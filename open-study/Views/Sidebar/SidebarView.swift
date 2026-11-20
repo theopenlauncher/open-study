@@ -187,6 +187,10 @@ struct SidebarView: View {
         .contextMenu {
             Button("Open") { router.selection = .subject(id) }
             Button("New Page") { TopicPages.create(in: subject, context: context, router: router) }
+            // Hover-free way to expand/collapse (the chevron only shows on hover).
+            if hasPages {
+                Button(expanded ? "Hide Pages" : "Show Pages") { toggleExpanded(id) }
+            }
             Button("Edit Subject…") { editingSubject = subject }
             Divider()
             Button("Move Up") { shift(subject, by: -1) }

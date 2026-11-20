@@ -142,7 +142,9 @@ struct ChecklistBlockView: View {
         HStack(spacing: 10) {
             SquareCheckbox(isOn: item.done) { update(item.id) { $0.done.toggle() } }
             TextField("Item", text: Binding(
-                get: { item.text },
+                // Read the stored entry, not the captured row value, so the
+                // field never sees pre-edit text between a keystroke and re-render.
+                get: { block.checklist.first { $0.id == item.id }?.text ?? "" },
                 set: { new in update(item.id) { $0.text = new } }
             ))
             .textFieldStyle(.plain)

@@ -53,6 +53,8 @@ enum TopicPages {
     /// What stays put: decks, quizzes and documents (they can be shared with
     /// other pages) and history (focus sessions, review logs).
     static func move(_ page: TopicPage, to subject: Subject, before target: TopicPage?) {
+        // Dropping a page onto itself is a no-op (nil target still means "move to end").
+        if target?.id == page.id { return }
         if page.subject?.id != subject.id {
             let oldSubjectID = page.subject?.id
             page.subject = subject
