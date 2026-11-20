@@ -124,6 +124,7 @@ struct FlashcardsBlockView: View {
 
     var body: some View {
         if let deck = block.deck {
+            let due = deck.dueCards
             WidgetCard(symbol: "rectangle.on.rectangle.angled", title: deck.name) {
                 Menu {
                     Button("Open in Flashcards") { router.openDeck(deck.id) }
@@ -136,15 +137,15 @@ struct FlashcardsBlockView: View {
                 VStack(alignment: .leading, spacing: Space.md) {
                     HStack(spacing: Space.xl) {
                         metric("\(deck.cards.count)", "cards")
-                        metric("\(deck.dueCards.count)", "due", highlight: !deck.dueCards.isEmpty)
+                        metric("\(due.count)", "due", highlight: !due.isEmpty)
                         metric(accuracy(deck).map { "\(Int(($0 * 100).rounded()))%" } ?? "—", "accuracy")
                     }
                     HStack(spacing: Space.sm) {
                         Button {
                             review = ReviewSession(title: deck.name, cards: deck.dueCards)
-                        } label: { Label(deck.dueCards.isEmpty ? "Nothing due" : "Review \(deck.dueCards.count)", systemImage: "play.fill") }
+                        } label: { Label(due.isEmpty ? "Nothing due" : "Review \(due.count)", systemImage: "play.fill") }
                             .buttonStyle(OSButtonStyle(variant: .primary, compact: true))
-                            .disabled(deck.dueCards.isEmpty)
+                            .disabled(due.isEmpty)
                         Button { addCard = true } label: { Label("Add card", systemImage: "plus") }
                             .buttonStyle(OSButtonStyle(variant: .secondary, compact: true))
                     }
@@ -263,11 +264,21 @@ struct PDFBlockView: View {
 
 struct PomodoroBlockView: View {
     let block: Block
+    /// Only today's sessions for this subject, filtered in the store.
     @Query private var sessions: [FocusSession]
 
+    init(block: Block) {
+        self.block = block
+        let subjectID = block.subject?.id
+        let startOfToday = Calendar.current.startOfDay(for: .now)
+        _sessions = Query(filter: #Predicate<FocusSession> { s in
+            s.startedAt >= startOfToday && s.subject?.id == subjectID
+        })
+    }
+
     private var todaySeconds: Double {
-        guard let id = block.subject?.id else { return 0 }
-        return sessions.filter { $0.subject?.id == id && Calendar.current.isDateInToday($0.startedAt) }.reduce(0) { $0 + $1.seconds }
+        guard block.subject != nil else { return 0 }
+        return sessions.reduce(0) { $0 + $1.seconds }
     }
 
     var body: some View {
@@ -287,9 +298,19 @@ struct PomodoroBlockView: View {
 
 struct StatisticsBlockView: View {
     let block: Block
+    // Scoped to the block's subject in the store instead of loading every row.
     @Query private var sessions: [FocusSession]
     @Query private var reviews: [ReviewLog]
     @Query private var tasks: [TaskItem]
+
+    init(block: Block) {
+        self.block = block
+        if let subjectID = block.subject?.id {
+            _sessions = Query(filter: #Predicate<FocusSession> { $0.subject?.id == subjectID })
+            _reviews = Query(filter: #Predicate<ReviewLog> { $0.subjectID == subjectID })
+            _tasks = Query(filter: #Predicate<TaskItem> { $0.subject?.id == subjectID })
+        }
+    }
 
     var body: some View {
         let summary = ActivitySummary(sessions: sessions, reviews: reviews, tasks: tasks, subjectID: block.subject?.id)

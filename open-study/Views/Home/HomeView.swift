@@ -259,7 +259,7 @@ private struct FocusHero: View {
                     Circle().trim(from: 0, to: engine.progress)
                         .stroke(Theme.onInk, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                        .animation(.linear(duration: 0.25), value: engine.progress)
+                        .animation(.linear(duration: 1), value: engine.progress)
                 }
                 .frame(width: 92, height: 92)
             }

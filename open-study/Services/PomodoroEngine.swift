@@ -183,8 +183,10 @@ final class PomodoroEngine {
         if left <= 0 {
             remaining = 0
             complete()
-        } else {
-            remaining = left
+        } else if left.rounded(.up) != remaining.rounded(.up) {
+            // The clock shows whole seconds, so only publish when that changes;
+            // views observing `remaining` then redraw 1×/s instead of 4×/s.
+            remaining = left.rounded(.up)
         }
     }
 

@@ -6,7 +6,7 @@
 //  SwiftData store; imported PDF files live on disk (see DocumentStore).
 //
 //  Delete rules are chosen to prevent accidental data loss:
-//  deleting a subject removes its page blocks, but keeps tasks, decks,
+//  deleting a subject removes its page, topic pages and their blocks, but keeps tasks, decks,
 //  documents, quizzes, events and focus history (they become unassigned).
 //
 
@@ -25,7 +25,9 @@ final class Subject {
     var sortIndex: Int = 0
     var createdAt: Date = Date()
 
+    /// Every block under this subject, including those on its topic pages.
     @Relationship(deleteRule: .cascade, inverse: \Block.subject) var blocks: [Block] = []
+    @Relationship(deleteRule: .cascade, inverse: \TopicPage.subject) var pages: [TopicPage] = []
     @Relationship(deleteRule: .nullify, inverse: \TaskItem.subject) var tasks: [TaskItem] = []
     @Relationship(deleteRule: .nullify, inverse: \Deck.subject) var decks: [Deck] = []
     @Relationship(deleteRule: .nullify, inverse: \StudyEvent.subject) var events: [StudyEvent] = []
@@ -40,6 +42,32 @@ final class Subject {
         self.sortIndex = sortIndex
     }
 
+    /// Blocks on the subject's own (overview) page, excluding topic pages.
+    var sortedBlocks: [Block] { blocks.filter { $0.page == nil }.sorted { $0.sortIndex < $1.sortIndex } }
+    var sortedPages: [TopicPage] { pages.sorted { $0.sortIndex < $1.sortIndex } }
+}
+
+// MARK: - Topic pages
+
+/// A page for one topic inside a subject. Its blocks also point at the
+/// subject so subject-scoped widgets (stats, decks, tasks) keep working.
+@Model
+final class TopicPage {
+    var id: UUID = UUID()
+    var title: String = ""
+    var symbol: String = "doc.text"
+    var sortIndex: Int = 0
+    var createdAt: Date = Date()
+    var subject: Subject?
+    @Relationship(deleteRule: .cascade, inverse: \Block.page) var blocks: [Block] = []
+
+    init(title: String = "", symbol: String = "doc.text", sortIndex: Int = 0) {
+        self.title = title
+        self.symbol = symbol
+        self.sortIndex = sortIndex
+    }
+
+    var displayTitle: String { title.isEmpty ? "Untitled page" : title }
     var sortedBlocks: [Block] { blocks.sorted { $0.sortIndex < $1.sortIndex } }
 }
 
@@ -150,6 +178,8 @@ final class Block {
     var showCompleted: Bool = true
 
     var subject: Subject?
+    /// Set when the block lives on a topic page rather than the subject page.
+    var page: TopicPage?
     var deck: Deck?
     var document: StudyDocument?
     var quiz: Quiz?
@@ -552,7 +582,7 @@ final class HabitCheck {
 
 enum AppSchema {
     static let models: [any PersistentModel.Type] = [
-        Subject.self, Block.self, TaskItem.self, Deck.self, Flashcard.self, ReviewLog.self,
+        Subject.self, TopicPage.self, Block.self, TaskItem.self, Deck.self, Flashcard.self, ReviewLog.self,
         StudyEvent.self, FocusSession.self, StudyDocument.self, Quiz.self, QuizQuestion.self,
         QuizAttempt.self, Habit.self, HabitCheck.self,
     ]

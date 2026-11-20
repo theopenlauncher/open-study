@@ -2,7 +2,8 @@
 //  SidebarView.swift
 //  open-study
 //
-//  Hybrid sidebar: global navigation, subjects, settings (DESIGN.md §4).
+//  Hybrid sidebar: global navigation, subjects with their topic pages,
+//  settings (DESIGN.md §4).
 //
 
 import SwiftUI
@@ -13,23 +14,13 @@ struct SidebarView: View {
     @Environment(AppRouter.self) private var router
     @Environment(\.modelContext) private var context
     @Query(sort: \Subject.sortIndex) private var subjects: [Subject]
-    @Query private var cards: [Flashcard]
-    @Query(filter: #Predicate<TaskItem> { !$0.isDone }) private var openTasks: [TaskItem]
 
     @State private var editingSubject: Subject?
     @State private var subjectToDelete: Subject?
+    @State private var renamingPage: UUID?
+    @State private var pageToDelete: TopicPage?
     @State private var dropTarget: UUID?
     @State private var dropAtEnd = false
-
-    private var dueCardCount: Int {
-        let now = Date()
-        return cards.filter { $0.dueDate <= now }.count
-    }
-
-    private var dueTaskCount: Int {
-        let endOfToday = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: .now))!
-        return openTasks.filter { ($0.dueDate ?? .distantFuture) < endOfToday }.count
-    }
 
     var body: some View {
         @Bindable var router = router
@@ -38,8 +29,7 @@ struct SidebarView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(SidebarItem.global, id: \.self) { item in
-                        SidebarRow(symbol: item.symbol, title: item.title, isActive: router.selection == item,
-                                   badge: badge(for: item)) {
+                        GlobalNavRow(item: item, isActive: router.selection == item) {
                             router.selection = item
                         }
                     }
@@ -56,6 +46,11 @@ struct SidebarView: View {
 
                     ForEach(subjects) { subject in
                         subjectRow(subject)
+                        if router.expandedSubjects.contains(subject.id) {
+                            ForEach(subject.sortedPages) { page in
+                                pageRow(page, in: subject)
+                            }
+                        }
                     }
 
                     // End drop zone for reordering
@@ -93,7 +88,19 @@ struct SidebarView: View {
                 if let subjectToDelete { deleteSubject(subjectToDelete) }
             }
         } message: {
-            Text("The subject's page and its blocks will be deleted. Tasks, flashcard decks, quizzes, documents and calendar events are kept and become unassigned.")
+            Text("The subject's page, its topic pages and their blocks will be deleted. Tasks, flashcard decks, quizzes, documents and calendar events are kept and become unassigned.")
+        }
+        .confirmationDialog(
+            "Delete “\(pageToDelete?.displayTitle ?? "")”?",
+            isPresented: Binding(get: { pageToDelete != nil }, set: { if !$0 { pageToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Page", role: .destructive) {
+                if let pageToDelete { TopicPages.delete(pageToDelete, context: context, router: router) }
+                pageToDelete = nil
+            }
+        } message: {
+            Text(TopicPages.deleteMessage)
         }
     }
 
@@ -129,13 +136,20 @@ struct SidebarView: View {
 
     private func subjectRow(_ subject: Subject) -> some View {
         let id = subject.id
+        let hasPages = !subject.pages.isEmpty
+        let expanded = router.expandedSubjects.contains(id)
         return SidebarRow(
             symbol: subject.symbol,
             title: subject.name.isEmpty ? "Untitled" : subject.name,
             isActive: router.selection == .subject(id),
-            tint: SubjectColor.from(subject.colorKey).color
+            tint: SubjectColor.from(subject.colorKey).color,
+            disclosure: hasPages ? expanded : nil,
+            onToggle: { toggleExpanded(id) },
+            onAdd: { TopicPages.create(in: subject, context: context, router: router) },
+            addHelp: "Add a page to \(subject.name)"
         ) {
             router.selection = .subject(id)
+            if hasPages { router.expandedSubjects.insert(id) }
         }
         .overlay(alignment: .top) {
             if dropTarget == id { DropLine().offset(y: -1) }
@@ -150,7 +164,14 @@ struct SidebarView: View {
         }
         .dropDestination(for: String.self) { items, _ in
             guard let dragged = items.first.flatMap(UUID.init) else { return false }
-            moveSubject(dragged, before: id)
+            if let page = page(withID: dragged) {
+                // Dropping a page on a subject moves it into that subject.
+                TopicPages.move(page, to: subject, before: nil)
+                router.expandedSubjects.insert(id)
+            } else {
+                moveSubject(dragged, before: id)
+            }
+            dropTarget = nil
             return true
         } isTargeted: { targeted in
             dropTarget = targeted ? id : (dropTarget == id ? nil : dropTarget)
@@ -165,6 +186,7 @@ struct SidebarView: View {
         }
         .contextMenu {
             Button("Open") { router.selection = .subject(id) }
+            Button("New Page") { TopicPages.create(in: subject, context: context, router: router) }
             Button("Edit Subject…") { editingSubject = subject }
             Divider()
             Button("Move Up") { shift(subject, by: -1) }
@@ -187,11 +209,65 @@ struct SidebarView: View {
         .padding(.bottom, Space.md)
     }
 
-    private func badge(for item: SidebarItem) -> String? {
-        switch item {
-        case .flashcards: dueCardCount > 0 ? "\(dueCardCount)" : nil
-        case .tasks: dueTaskCount > 0 ? "\(dueTaskCount)" : nil
-        default: nil
+    private func pageRow(_ page: TopicPage, in subject: Subject) -> some View {
+        let id = page.id
+        let pages = subject.sortedPages
+        return SidebarRow(
+            symbol: page.symbol,
+            title: page.displayTitle,
+            isActive: router.selection == .page(id),
+            muted: page.title.isEmpty,
+            indent: 22,
+            iconSize: 13
+        ) {
+            router.selection = .page(id)
+        }
+        .overlay(alignment: .top) {
+            if dropTarget == id { DropLine().offset(y: -1).padding(.leading, 22) }
+        }
+        .draggable(id.uuidString) {
+            HStack(spacing: 8) {
+                Image(systemName: page.symbol)
+                Text(page.displayTitle).font(Typo.nav)
+            }
+            .padding(8)
+            .background(Theme.raised, in: RoundedRectangle(cornerRadius: Radius.control))
+        }
+        .dropDestination(for: String.self) { items, _ in
+            guard let dragged = items.first.flatMap(UUID.init), let moving = self.page(withID: dragged) else { return false }
+            TopicPages.move(moving, to: subject, before: page)
+            dropTarget = nil
+            return true
+        } isTargeted: { targeted in
+            dropTarget = targeted ? id : (dropTarget == id ? nil : dropTarget)
+        }
+        .popover(isPresented: Binding(get: { renamingPage == id }, set: { if !$0 { renamingPage = nil } }), arrowEdge: .trailing) {
+            PageRenamer(page: page) { renamingPage = nil }
+        }
+        .contextMenu {
+            Button("Open") { router.selection = .page(id) }
+            Button("Rename…") { renamingPage = id }
+            Divider()
+            Button("Move Up") { TopicPages.shift(page, by: -1) }
+                .disabled(pages.first?.id == id)
+            Button("Move Down") { TopicPages.shift(page, by: 1) }
+                .disabled(pages.last?.id == id)
+            Divider()
+            Button("Delete Page…", role: .destructive) { pageToDelete = page }
+        }
+    }
+
+    private func page(withID id: UUID) -> TopicPage? {
+        for subject in subjects {
+            if let page = subject.pages.first(where: { $0.id == id }) { return page }
+        }
+        return nil
+    }
+
+    private func toggleExpanded(_ id: UUID) {
+        withAnimation(Motion.fade) {
+            if router.expandedSubjects.contains(id) { router.expandedSubjects.remove(id) }
+            else { router.expandedSubjects.insert(id) }
         }
     }
 
@@ -252,24 +328,37 @@ struct SidebarRow: View {
     var badge: String? = nil
     var tint: Color? = nil
     var muted = false
+    var indent: CGFloat = 0
+    var iconSize: CGFloat = 15
+    /// nil hides the disclosure chevron; otherwise whether the row is expanded.
+    var disclosure: Bool? = nil
+    var onToggle: (() -> Void)? = nil
+    /// Shows a hover "+" on the trailing edge.
+    var onAdd: (() -> Void)? = nil
+    var addHelp = "Add"
     let action: () -> Void
     @State private var hovering = false
+
+    private var showChevron: Bool { hovering && disclosure != nil }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: symbol)
-                    .font(.system(size: 15))
+                    .font(.system(size: iconSize))
                     .foregroundStyle(tint ?? (isActive ? Theme.textPrimary : Theme.textSecondary))
                     .frame(width: 20)
+                    .opacity(showChevron ? 0 : 1)
                 Text(title)
                     .font(isActive ? Typo.nav.weight(.medium) : Typo.nav)
                     .foregroundStyle(muted ? Theme.textSecondary : Theme.textPrimary)
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 if let badge { Badge(text: badge) }
+                if onAdd != nil { Color.clear.frame(width: 20) }
             }
-            .padding(.horizontal, 10)
+            .padding(.leading, 10 + indent)
+            .padding(.trailing, 10)
             .frame(height: 32)
             .background(
                 isActive ? Theme.sidebarActive : (hovering ? Theme.sidebarHover : .clear),
@@ -278,6 +367,39 @@ struct SidebarRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .leading) {
+            if showChevron, let disclosure, let onToggle {
+                Button(action: onToggle) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .rotationEffect(.degrees(disclosure ? 90 : 0))
+                        .frame(width: 20, height: 22)
+                        .contentShape(Rectangle())
+                        .hoverHighlight(cornerRadius: 5, onCanvas: true)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 10 + indent)
+                .help(disclosure ? "Hide pages" : "Show pages")
+                .accessibilityLabel(disclosure ? "Hide pages" : "Show pages")
+            }
+        }
+        .overlay(alignment: .trailing) {
+            if hovering, let onAdd {
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 20, height: 22)
+                        .contentShape(Rectangle())
+                        .hoverHighlight(cornerRadius: 5, onCanvas: true)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 6)
+                .help(addHelp)
+                .accessibilityLabel(addHelp)
+            }
+        }
         .onHover { hovering = $0 }
         .animation(Motion.hover, value: hovering)
         .accessibilityAddTraits(isActive ? .isSelected : [])
@@ -370,5 +492,101 @@ struct SubjectEditor: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         onSave(trimmed, symbol, color)
+    }
+}
+
+// MARK: - Global nav rows
+
+/// Global nav rows. The Flashcards and Tasks badges live in their own views
+/// with narrow queries, so card reviews and task edits only redraw the badge
+/// row instead of the whole sidebar. TimelineView refreshes the cut-off.
+private struct GlobalNavRow: View {
+    let item: SidebarItem
+    let isActive: Bool
+    let action: () -> Void
+
+    var body: some View {
+        switch item {
+        case .flashcards:
+            // `ctx.date` is the start of the minute; use the real time so cards
+            // created earlier in this minute already count as due.
+            TimelineView(.everyMinute) { _ in
+                DueCardsNavRow(item: item, now: Date(), isActive: isActive, action: action)
+            }
+        case .tasks:
+            TimelineView(.everyMinute) { ctx in
+                DueTasksNavRow(item: item, now: ctx.date, isActive: isActive, action: action)
+            }
+        default:
+            SidebarRow(symbol: item.symbol, title: item.title, isActive: isActive, action: action)
+        }
+    }
+}
+
+private struct DueCardsNavRow: View {
+    let item: SidebarItem
+    let isActive: Bool
+    let action: () -> Void
+    @Query private var due: [Flashcard]
+
+    init(item: SidebarItem, now: Date, isActive: Bool, action: @escaping () -> Void) {
+        self.item = item
+        self.isActive = isActive
+        self.action = action
+        _due = Query(filter: #Predicate<Flashcard> { $0.dueDate <= now })
+    }
+
+    var body: some View {
+        SidebarRow(symbol: item.symbol, title: item.title, isActive: isActive,
+                   badge: due.isEmpty ? nil : "\(due.count)", action: action)
+    }
+}
+
+private struct DueTasksNavRow: View {
+    let item: SidebarItem
+    let isActive: Bool
+    let action: () -> Void
+    @Query private var due: [TaskItem]
+
+    init(item: SidebarItem, now: Date, isActive: Bool, action: @escaping () -> Void) {
+        self.item = item
+        self.isActive = isActive
+        self.action = action
+        let cal = Calendar.current
+        let endOfToday = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) ?? now
+        let never = Date.distantFuture
+        _due = Query(filter: #Predicate<TaskItem> { !$0.isDone && ($0.dueDate ?? never) < endOfToday })
+    }
+
+    var body: some View {
+        SidebarRow(symbol: item.symbol, title: item.title, isActive: isActive,
+                   badge: due.isEmpty ? nil : "\(due.count)", action: action)
+    }
+}
+
+// MARK: - Page renamer
+
+private struct PageRenamer: View {
+    @Bindable var page: TopicPage
+    let onDone: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            Text("Rename page").font(Typo.title)
+            TextField("Page name, e.g. Thermodynamics", text: $page.title)
+                .textFieldStyle(.os)
+                .focused($focused)
+                .onSubmit(onDone)
+            HStack {
+                Spacer()
+                Button("Done", action: onDone)
+                    .buttonStyle(.osPrimary)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(Space.xl)
+        .frame(width: 280)
+        .onAppear { focused = true }
     }
 }

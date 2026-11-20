@@ -20,7 +20,7 @@ struct TimerRing: View {
                 .trim(from: 0, to: max(0.0001, min(1, progress)))
                 .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 0.25), value: progress)
+                .animation(.linear(duration: 1), value: progress)
         }
         .accessibilityHidden(true)
     }
