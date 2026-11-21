@@ -132,8 +132,8 @@ Rules:
 The sidebar sits directly on `canvas` — it is not a separate panel and has no border of its own. The workspace card's edge *is* the separator, exactly as in the reference.
 
 **Dimensions**
-- Width: **232pt** fixed (collapsible). Collapses with a 0.25s ease‑out slide: the sidebar stays in the layout and its slot animates to 0, so it slides out while the workspace card widens in the same motion (with Reduce Motion it fades). Toggle with the sidebar button in the top strip, the close button in the brand row, or **⌃⌘S**.
-- Top strip: **30pt** tall, full window width, `canvas`. Traffic lights sit in it; the sidebar toggle button sits immediately to their right (x = 78pt). Its right side carries the live timer pill.
+- Width: **232pt** fixed (collapsible). Collapses with a 0.25s ease‑out slide: the sidebar stays in the layout and its slot animates to 0, so it slides out while the workspace card widens in the same motion (with Reduce Motion it fades). Hide it with the close button in the brand row, show it again with the button in the top strip, or toggle with **⌃⌘S**.
+- Top strip: **30pt** tall, full window width, `canvas`. Traffic lights sit in it; while the sidebar is hidden, a "Show sidebar" button sits immediately to their right (x = 78pt) and fades out once the sidebar is open. Its right side carries the live timer pill.
 - Horizontal padding: 12pt. Rows are inset 12pt from the window edge, so the active pill floats.
 
 **Structure (top → bottom)**

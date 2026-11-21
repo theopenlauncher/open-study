@@ -141,10 +141,13 @@ private struct TopStrip: View {
     var body: some View {
         HStack(spacing: Space.sm) {
             Color.clear.frame(width: 70) // traffic lights
-            if !router.isFocusMode {
-                IconButton(symbol: "sidebar.left", help: router.sidebarVisible ? "Hide sidebar (⌃⌘S)" : "Show sidebar (⌃⌘S)", onCanvas: true) {
-                    withAnimation(Motion.sidebar) { router.sidebarVisible.toggle() }
+            // Only needed to bring the sidebar back: while it's open, its own
+            // brand-row button hides it.
+            if !router.isFocusMode && !router.sidebarVisible {
+                IconButton(symbol: "sidebar.left", help: "Show sidebar (⌃⌘S)", onCanvas: true) {
+                    withAnimation(Motion.sidebar) { router.sidebarVisible = true }
                 }
+                .transition(.opacity)
             }
             Spacer()
             if engine.isActive && !router.isFocusMode {
@@ -156,6 +159,7 @@ private struct TopStrip: View {
         .frame(height: Layout.topStrip, alignment: .center)
         .padding(.top, 1)
         .animation(Motion.fade, value: engine.isActive)
+        .animation(Motion.fade, value: router.sidebarVisible)
     }
 }
 
