@@ -18,6 +18,8 @@ Notes, flashcards, PDFs, quizzes, tasks and a focus timer — organised by subje
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-B7791F)](CONTRIBUTING.md)
 [![GitHub stars](https://img.shields.io/github/stars/theopenlauncher/open-study?style=flat)](https://github.com/theopenlauncher/open-study/stargazers)
 
+<a href="https://www.producthunt.com/products/open-study?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-open-study" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1325268&theme=light" alt="Open Study on Product Hunt" width="200" height="43"></a>
+
 [Download](#download) · [Features](#features) · [Build from source](#building-from-source) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 </div>
