@@ -169,8 +169,21 @@ enum NoteImages {
     /// Pixel width cap for stored images: sharp at full reading width on Retina, without bloating notes.
     static let maxPixelWidth: CGFloat = 1800
 
+    /// The picture an attachment holds, or nil when it isn't an image.
+    /// File-backed attachments must decode as an image file: other files
+    /// (a ZIP, a PDF, a folder) keep their data, and their cell's file icon
+    /// is never mistaken for content.
     static func image(of attachment: NSTextAttachment) -> NSImage? {
-        if let data = attachment.fileWrapper?.regularFileContents, let image = NSImage(data: data) { return image }
+        if let wrapper = attachment.fileWrapper {
+            // `regularFileContents` raises for directory and symlink wrappers.
+            guard wrapper.isRegularFile, let data = wrapper.regularFileContents else { return nil }
+            if let name = wrapper.preferredFilename ?? wrapper.filename,
+               let type = UTType(filenameExtension: (name as NSString).pathExtension), !type.conforms(to: .image) {
+                return nil
+            }
+            guard !NSBitmapImageRep.imageReps(with: data).isEmpty else { return nil }
+            return NSImage(data: data)
+        }
         if let image = attachment.image { return image }
         return (attachment.attachmentCell as? NSCell)?.image
     }
