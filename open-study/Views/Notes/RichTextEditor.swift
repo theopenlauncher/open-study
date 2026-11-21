@@ -328,24 +328,32 @@ final class NoteFormatter {
 
     // MARK: Inline styles
 
+    /// Format bar / ⌘B / ⌘I: flips the trait based on the start of the selection.
     func toggleTrait(_ trait: NSFontTraitMask) {
         guard let tv = textView, let storage = tv.textStorage else { return }
         let fm = NSFontManager.shared
         let ranges = selectedRanges.filter { $0.length > 0 }
+        let probe = ranges.first.map { storage.attribute(.font, at: $0.location, effectiveRange: nil) as? NSFont }
+            ?? tv.typingAttributes[.font] as? NSFont
+        setTrait(trait, on: !fm.traits(of: probe ?? NoteFonts.body).contains(trait))
+    }
+
+    /// Adds or removes a trait on every selected run (or the typing font with
+    /// a caret). Used by the Font menu, which states the direction explicitly.
+    func setTrait(_ trait: NSFontTraitMask, on: Bool) {
+        guard let tv = textView, tv.textStorage != nil else { return }
+        let fm = NSFontManager.shared
+        func apply(_ f: NSFont) -> NSFont { on ? fm.convert(f, toHaveTrait: trait) : fm.convert(f, toNotHaveTrait: trait) }
+        let ranges = selectedRanges.filter { $0.length > 0 }
         if ranges.isEmpty {
-            let font = tv.typingAttributes[.font] as? NSFont ?? NoteFonts.body
-            let has = fm.traits(of: font).contains(trait)
-            tv.typingAttributes[.font] = has ? fm.convert(font, toNotHaveTrait: trait) : fm.convert(font, toHaveTrait: trait)
+            tv.typingAttributes[.font] = apply(tv.typingAttributes[.font] as? NSFont ?? NoteFonts.body)
             refreshState()
             return
         }
-        let first = storage.attribute(.font, at: ranges[0].location, effectiveRange: nil) as? NSFont ?? NoteFonts.body
-        let has = fm.traits(of: first).contains(trait)
         edit(ranges) { storage in
             for r in ranges {
                 storage.enumerateAttribute(.font, in: r) { value, sub, _ in
-                    let f = value as? NSFont ?? NoteFonts.body
-                    storage.addAttribute(.font, value: has ? fm.convert(f, toNotHaveTrait: trait) : fm.convert(f, toHaveTrait: trait), range: sub)
+                    storage.addAttribute(.font, value: apply(value as? NSFont ?? NoteFonts.body), range: sub)
                 }
             }
         }
@@ -561,19 +569,21 @@ final class NoteTextView: NSTextView {
     /// the shared font manager.
     override func changeFont(_ sender: Any?) {
         guard let formatter, formatter.textView === self, let fm = sender as? NSFontManager else { return super.changeFont(sender) }
-        // Compare against the real font at the caret/selection, not cached state.
-        formatter.refreshState()
         // Probe what the pending font-manager action does: adding a trait shows
         // on a plain font, removing one shows on a font that already has it.
-        for (trait, isOn) in [(NSFontTraitMask.boldFontMask, formatter.isBold), (.italicFontMask, formatter.isItalic)] {
+        // The direction is applied to the whole selection as requested, so
+        // mixed selections and bold headings behave correctly.
+        for trait in [NSFontTraitMask.boldFontMask, .italicFontMask] {
             let plain = NoteFonts.body
             let styled = fm.convert(plain, toHaveTrait: trait)
             let adds = fm.traits(of: fm.convert(plain)).contains(trait)
             let removes = fm.traits(of: styled).contains(trait) && !fm.traits(of: fm.convert(styled)).contains(trait)
             guard adds || removes else { continue }
-            if adds != isOn { formatter.toggleTrait(trait) }
+            formatter.setTrait(trait, on: adds)
             return
         }
+        // Not a bold/italic action (e.g. a size change): let NSTextView handle it.
+        super.changeFont(sender)
     }
 
     override func underline(_ sender: Any?) {
@@ -746,9 +756,11 @@ final class NoteTextView: NSTextView {
         let original = hit.cell.displaySize
         let aspect = startSize.height / max(1, startSize.width)
         var size = startSize
+        var moved = false
         let charRange = NSRange(location: hit.index, length: 1)
         while let event = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             let p = convert(event.locationInWindow, from: nil)
+            if p != start { moved = true }
             // Follow whichever axis moved further so diagonal drags feel natural.
             let dx = p.x - start.x
             let dy = (p.y - start.y) / max(aspect, 0.01)
@@ -761,6 +773,14 @@ final class NoteTextView: NSTextView {
             if event.type == .leftMouseUp { break }
         }
         hit.cell.displaySize = original
+        // A click without a drag keeps the stored size: committing the displayed
+        // (possibly width-clamped) size would shrink the image for good.
+        guard moved, size != startSize else {
+            layoutManager?.invalidateLayout(forCharacterRange: charRange, actualCharacterRange: nil)
+            refreshHeight()
+            needsDisplay = true
+            return
+        }
         setImageSize(at: hit.index, to: size)
     }
 
