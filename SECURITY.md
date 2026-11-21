@@ -1,0 +1,103 @@
+# Security Policy
+
+Open Study stores people's personal study material — notes, documents and history — so we take the security of the app and its users' data seriously. Thank you for helping keep Open Study and its users safe.
+
+## Supported versions
+
+Open Study is in early development. Security fixes are made on the `main` branch and shipped in the next release.
+
+| Version | Supported |
+| --- | --- |
+| Latest [release](https://github.com/theopenlauncher/open-study/releases) | ✅ |
+| `main` branch | ✅ |
+| Older releases | ❌ |
+
+If you are using an older version, please update to the latest release before reporting an issue.
+
+## Reporting a vulnerability
+
+> [!CAUTION]
+> **Please do not report security vulnerabilities through public GitHub issues, discussions or pull requests.** Public disclosure before a fix is available puts users at risk.
+
+Report vulnerabilities privately through **GitHub's private vulnerability reporting**:
+
+1. Go to the [**Security** tab](https://github.com/theopenlauncher/open-study/security) of this repository.
+2. Click **Report a vulnerability**, or open the form directly: **[Report a vulnerability](https://github.com/theopenlauncher/open-study/security/advisories/new)**.
+3. Fill in the details and submit.
+
+Only the maintainers can see your report. We can discuss the issue, collaborate on a fix in a private fork and credit you in the published advisory, all in one place.
+
+### What to include
+
+To help us triage and fix the issue quickly, please include as much of the following as you can:
+
+- the **type of issue** (for example: arbitrary file read, data loss or corruption, unintended network disclosure, sandbox escape, memory corruption from a crafted file);
+- the **Open Study version** or commit and your **macOS version**;
+- the **affected source file(s)** or feature, if known;
+- **step-by-step instructions** to reproduce the issue;
+- any **proof-of-concept** files or code (for example a crafted PDF, CSV or note);
+- the **impact** — what an attacker could achieve and under what conditions.
+
+Please do not include real personal data in your report; use test content instead.
+
+## What to expect
+
+We are a small, volunteer-run project, and we will do our best to respond promptly:
+
+| Stage | Target |
+| --- | --- |
+| Acknowledgement of your report | Within **5 business days** |
+| Initial assessment and severity | Within **14 days** |
+| Fix or mitigation | Depends on severity and complexity; we will keep you updated at least every **14 days** |
+
+Once a fix is released, we will publish a [GitHub Security Advisory](https://github.com/theopenlauncher/open-study/security/advisories) describing the issue and, with your permission, credit you for the discovery. If we decide a report is not a vulnerability, we will explain why.
+
+## Coordinated disclosure
+
+We follow a coordinated disclosure process. We ask that you:
+
+- give us a reasonable amount of time to fix the issue before disclosing it publicly — we aim for no more than **90 days** from the report;
+- make a good-faith effort to avoid privacy violations, data destruction and service disruption while researching;
+- only test against your own installation and data.
+
+We will not pursue legal action against researchers who follow this policy and act in good faith.
+
+## Scope
+
+### In scope
+
+Vulnerabilities in the Open Study application and this repository, including:
+
+- **Untrusted file handling** — crashes, memory corruption or unexpected behaviour caused by crafted PDFs, images, RTFD notes or CSV / text flashcard imports;
+- **Data exposure** — any path by which note text, card text, task or subject names, files or other user content could be sent off the device, including through analytics, crash reports or logs;
+- **Analytics consent** — any case where usage data is sent while *Share anonymous usage data* is turned off;
+- **Sandbox and entitlements** — access to files or resources beyond what the app's entitlements and the user's explicit choices allow;
+- **Data integrity** — issues that allow an attacker to corrupt or destroy a user's stored data;
+- **Supply chain** — problems in the build configuration or dependency set-up of this repository.
+
+### Out of scope
+
+- Vulnerabilities in **macOS** or Apple frameworks themselves (please report these to [Apple](https://security.apple.com)), unless Open Study uses them in an unsafe way;
+- Vulnerabilities in **PostHog's** SDK or service (please report these to [PostHog](https://posthog.com/handbook/company/security)), unless Open Study's use of them introduces the issue;
+- Attacks that require **physical access** to an unlocked Mac, or an attacker already running code as the user;
+- The PostHog **project token** embedded in the app. It is a public, write-only client key by design and does not grant read access to analytics data. Abuse of it to submit spam events is a known limitation of client-side analytics;
+- Issues in forks or modified builds not distributed by this project;
+- Reports generated by automated scanners without a demonstrated, exploitable impact.
+
+## Security model
+
+For context when assessing an issue, here is how Open Study is designed:
+
+- **Local-only storage.** All user data is stored in a SwiftData database and a `Documents` folder inside the app's sandbox container. There is no account system, server or sync; CloudKit is disabled.
+- **App Sandbox.** The app requests only **read-only access to user-selected files** and **outgoing network connections**. Imported PDFs are copied into the container rather than accessed in place.
+- **Minimal, opt-out telemetry.** The only network traffic is to PostHog, and only when the user has *Share anonymous usage data* enabled. When disabled, the SDK is not started. Events are limited to app start, database initialisation status, focus session metadata (duration, completion, whether a subject was linked) and automatically captured error reports — never user content.
+- **Safe writes.** PDF annotations are written to a temporary file and atomically swapped in, so a failed write does not corrupt the original.
+- **Single dependency.** The only third-party code is the [PostHog SDK](https://github.com/PostHog/posthog-ios), pinned through Swift Package Manager.
+
+## Security-related configuration
+
+If you are building Open Study yourself, never commit secrets to the repository. The `.env` file is git-ignored; see [CONTRIBUTING.md](CONTRIBUTING.md#analytics-during-development) for how analytics configuration is supplied.
+
+---
+
+Thank you for helping keep Open Study and its users safe.
