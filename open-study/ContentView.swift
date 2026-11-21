@@ -20,6 +20,9 @@ struct ContentView: View {
     /// with the slide; with Reduce Motion it changes without animation and,
     /// when hiding, only after the sidebar has faded out.
     @State private var sidebarSlotOpen: Bool?
+    /// Bumped on every show/hide so a delayed collapse from an earlier hide
+    /// can tell it has been superseded by a later toggle.
+    @State private var sidebarToggleGeneration = 0
     private var sidebarSlot: Bool { sidebarSlotOpen ?? showSidebar }
 
     private var promptShown: Binding<Bool> {
@@ -63,6 +66,7 @@ struct ContentView: View {
             sidebarSlotOpen = showSidebar
         }
         .onChange(of: showSidebar) { _, open in
+            sidebarToggleGeneration += 1
             guard reduceMotion else {
                 withAnimation(Motion.sidebar) { sidebarSlotOpen = open }
                 return
@@ -71,9 +75,11 @@ struct ContentView: View {
             if open {
                 withTransaction(Transaction(animation: nil)) { sidebarSlotOpen = true }
             } else {
+                let generation = sidebarToggleGeneration
                 Task { @MainActor in
                     try? await Task.sleep(for: .seconds(0.18))
-                    guard !showSidebar else { return }
+                    // A later show or hide owns the slot now; its own fade decides.
+                    guard generation == sidebarToggleGeneration, !showSidebar else { return }
                     withTransaction(Transaction(animation: nil)) { sidebarSlotOpen = false }
                 }
             }
