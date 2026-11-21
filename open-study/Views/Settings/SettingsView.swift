@@ -16,9 +16,10 @@ struct SettingsView: View {
     @AppStorage(PrefKey.shortBreakMinutes) private var shortBreak = 5
     @AppStorage(PrefKey.longBreakMinutes) private var longBreak = 15
     @AppStorage(PrefKey.longBreakEvery) private var longEvery = 4
-    @AppStorage(PrefKey.autoStartBreaks) private var autoBreaks = true
+    @AppStorage(PrefKey.autoStartBreaks) private var autoBreaks = false
     @AppStorage(PrefKey.autoStartFocus) private var autoFocus = false
     @AppStorage(PrefKey.playSound) private var playSound = true
+    @AppStorage(PrefKey.timerSound) private var timerSound = "Glass"
     @AppStorage(PrefKey.notificationsEnabled) private var notifications = true
     @AppStorage(PrefKey.dailyGoalMinutes) private var dailyGoal = 120
     @AppStorage(PrefKey.appearance) private var appearance = "system"
@@ -56,6 +57,8 @@ struct SettingsView: View {
                 Stepper("Long break after \(longEvery) focus sessions", value: $longEvery, in: 2...8)
                 Toggle("Start breaks automatically", isOn: $autoBreaks)
                 Toggle("Start next focus session automatically", isOn: $autoFocus)
+                Text("When these are off, Open Study asks before starting the next phase.")
+                    .font(Typo.callout).foregroundStyle(Theme.textTertiary)
                 if engine.isActive {
                     Text("New durations apply when the current session ends or is reset.")
                         .font(Typo.callout).foregroundStyle(Theme.textTertiary)
@@ -65,6 +68,11 @@ struct SettingsView: View {
                 Toggle("Notify when a session ends", isOn: $notifications)
                     .onChange(of: notifications) { _, on in if on { NotificationDelegate.requestAuthorization(); Task { await refreshAuth() } } }
                 Toggle("Play a sound", isOn: $playSound)
+                Picker("Sound", selection: $timerSound) {
+                    ForEach(TimerSound.all, id: \.self) { Text($0).tag($0) }
+                }
+                .disabled(!playSound)
+                .onChange(of: timerSound) { _, name in TimerSound.play(name) }
                 if notifications && authStatus == .denied {
                     HStack {
                         Text("Notifications are turned off for Open Study in System Settings.")

@@ -14,17 +14,34 @@ struct ContentView: View {
     @Environment(PomodoroEngine.self) private var engine
     @Environment(\.modelContext) private var context
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var showSidebar: Bool { router.sidebarVisible && !router.isFocusMode }
+
+    private var promptShown: Binding<Bool> {
+        Binding(get: { engine.prompt != nil }, set: { if !$0 { engine.dismissPrompt() } })
+    }
+
+    private var promptTitle: String {
+        guard let prompt = engine.prompt else { return "" }
+        return prompt.finished == .focus ? "Focus session complete" : "Break's over"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             TopStrip()
             HStack(spacing: 0) {
-                if showSidebar {
-                    SidebarView()
-                        .frame(width: Layout.sidebarWidth)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                }
+                // The sidebar stays in the layout and its slot animates between
+                // 0 and full width, so it slides out while the workspace card
+                // widens in the same motion (DESIGN.md §4). Removing it from the
+                // hierarchy instead made the card jump.
+                SidebarView()
+                    .frame(width: Layout.sidebarWidth)
+                    .offset(x: showSidebar || reduceMotion ? 0 : -Layout.sidebarWidth)
+                    .opacity(showSidebar ? 1 : 0)
+                    .frame(width: showSidebar ? Layout.sidebarWidth : 0, alignment: .leading)
+                    .clipped()
+                    .allowsHitTesting(showSidebar)
+                    .accessibilityHidden(!showSidebar)
                 WorkspaceCard {
                     DetailView()
                 }
@@ -36,9 +53,24 @@ struct ContentView: View {
         .background(Theme.canvas)
         .ignoresSafeArea(.container, edges: .top)
         .frame(minWidth: 960, minHeight: 640)
-        .animation(Motion.sidebar, value: showSidebar)
+        .animation(reduceMotion ? Motion.fade : Motion.sidebar, value: showSidebar)
         .onAppear {
             engine.modelContext = context
+        }
+        .alert(promptTitle, isPresented: promptShown, presenting: engine.prompt) { prompt in
+            if prompt.next == .focus {
+                Button("Start Session \(prompt.sessionNumber)") { engine.acceptPrompt() }
+                    .keyboardShortcut(.defaultAction)
+            } else {
+                Button("Start \(prompt.nextMinutes)-min Break") { engine.acceptPrompt() }
+                    .keyboardShortcut(.defaultAction)
+                Button("Skip Break") { engine.skipBreakFromPrompt() }
+            }
+            Button("Later", role: .cancel) { engine.dismissPrompt() }
+        } message: { prompt in
+            Text(prompt.next == .focus
+                 ? "Ready for focus session \(prompt.sessionNumber)? It runs for \(prompt.nextMinutes) minutes."
+                 : "Nice work. Take a \(prompt.nextMinutes)-minute \(prompt.next == .longBreak ? "long break" : "break") before the next session.")
         }
         #if DEBUG
         .task {

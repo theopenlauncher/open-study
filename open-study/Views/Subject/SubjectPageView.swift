@@ -266,11 +266,14 @@ struct BlockCanvas<Header: View>: View {
                 .onSubmit {
                     let text = trailingText.trimmingCharacters(in: .whitespaces)
                     guard !text.isEmpty else { return }
+                    // Continue in the new note rather than the trailing field, so
+                    // the next lines are paragraphs of one block: they can be
+                    // selected together and turned into a list.
                     let block = makeBlock(.text, after: blocks.last)
-                    block.text = text
-                    block.richData = NoteCodec.make(plain: text)
+                    block.text = text + "\n"
+                    block.richData = NoteCodec.make(plain: block.text)
                     trailingText = ""
-                    trailingFocused = true
+                    focusBlockID = block.id
                 }
         }
         .frame(minHeight: 32)

@@ -60,9 +60,37 @@ enum NoteFonts {
 enum NoteCodec {
     static func load(_ block: Block) -> NSAttributedString {
         if let data = block.richData, let s = NSAttributedString(rtfd: data, documentAttributes: nil) {
-            return themed(s)
+            let m = NSMutableAttributedString(attributedString: themed(s))
+            restoreListMarkers(m)
+            NoteImages.prepare(m)
+            return m
         }
         return NSAttributedString(string: block.text, attributes: NoteFonts.defaultAttributes)
+    }
+
+    /// TextKit 1 lists are drawn from literal "\t•\t" marker text, but RTFD
+    /// treats that text as list decoration and drops it when reading back.
+    /// The paragraphs keep their `textLists`, so the markers are rebuilt here.
+    static func restoreListMarkers(_ m: NSMutableAttributedString) {
+        let ns = m.string as NSString
+        var inserts: [(Int, NSAttributedString)] = []
+        var loc = 0
+        var previous: NSTextList.MarkerFormat?
+        var number = 0
+        while loc < ns.length {
+            let para = ns.paragraphRange(for: NSRange(location: loc, length: 0))
+            loc = para.location + para.length
+            let style = m.attribute(.paragraphStyle, at: para.location, effectiveRange: nil) as? NSParagraphStyle
+            guard let list = style?.textLists.last else { previous = nil; continue }
+            number = previous == list.markerFormat ? number + 1 : list.startingItemNumber
+            previous = list.markerFormat
+            if ns.substring(with: para).hasPrefix("\t") { continue }
+            var attrs = m.attributes(at: para.location, effectiveRange: nil)
+            attrs[.link] = nil
+            attrs[.attachment] = nil
+            inserts.append((para.location, NSAttributedString(string: "\t\(list.marker(forItemNumber: number))\t", attributes: attrs)))
+        }
+        for (at, marker) in inserts.reversed() { m.insert(marker, at: at) }
     }
 
     /// Re-applies dynamic colours (RTF stores fixed RGB, which would break dark mode).
@@ -91,6 +119,113 @@ enum NoteCodec {
     }
 }
 
+// MARK: - Images
+
+/// Draws an image attachment at a chosen size, never wider than the text
+/// it sits in (wide images used to be clipped by the note's edge).
+nonisolated final class ResizableImageCell: NSTextAttachmentCell {
+    var displaySize: NSSize
+
+    @MainActor init(image: NSImage, displaySize: NSSize) {
+        self.displaySize = displaySize
+        super.init(imageCell: image)
+    }
+
+    @MainActor required init(coder: NSCoder) {
+        displaySize = .zero
+        super.init(coder: coder)
+    }
+
+    override func cellSize() -> NSSize { displaySize }
+
+    override func cellFrame(for textContainer: NSTextContainer, proposedLineFragment lineFrag: NSRect,
+                            glyphPosition position: NSPoint, characterIndex charIndex: Int) -> NSRect {
+        var size = displaySize
+        let available = max(NoteImages.minWidth, lineFrag.width - textContainer.lineFragmentPadding * 2)
+        if size.width > available {
+            size = NSSize(width: available, height: (size.height * available / max(1, size.width)).rounded())
+        }
+        return NSRect(origin: .zero, size: size)
+    }
+
+    @MainActor override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
+        image?.draw(in: cellFrame, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true,
+                    hints: [.interpolation: NSImageInterpolation.high])
+    }
+
+    @MainActor override func draw(withFrame cellFrame: NSRect, in controlView: NSView?, characterIndex charIndex: Int) {
+        draw(withFrame: cellFrame, in: controlView)
+    }
+
+    @MainActor override func draw(withFrame cellFrame: NSRect, in controlView: NSView?, characterIndex charIndex: Int, layoutManager: NSLayoutManager) {
+        draw(withFrame: cellFrame, in: controlView)
+    }
+}
+
+enum NoteImages {
+    nonisolated static let minWidth: CGFloat = 48
+    /// Pixel width cap for stored images: sharp at full reading width on Retina, without bloating notes.
+    static let maxPixelWidth: CGFloat = 1800
+
+    static func image(of attachment: NSTextAttachment) -> NSImage? {
+        if let data = attachment.fileWrapper?.regularFileContents, let image = NSImage(data: data) { return image }
+        if let image = attachment.image { return image }
+        return (attachment.attachmentCell as? NSCell)?.image
+    }
+
+    /// Embeds `image` as PNG displayed `width` points wide. The display size is
+    /// written as the PNG's resolution, so it survives the RTFD round-trip.
+    static func attachment(for image: NSImage, width: CGFloat) -> NSTextAttachment? {
+        let width = max(minWidth, width.rounded())
+        let size = NSSize(width: width, height: max(1, (image.size.height * width / max(1, image.size.width)).rounded()))
+        let sourcePixels = CGFloat(image.representations.map(\.pixelsWide).max() ?? 0)
+        let pixelWidth = min(maxPixelWidth, max(width * 2, sourcePixels > 0 ? sourcePixels : width * 2))
+        let pixelHeight = max(1, (pixelWidth * size.height / size.width).rounded())
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(pixelWidth), pixelsHigh: Int(pixelHeight),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        rep.size = NSSize(width: pixelWidth, height: pixelHeight)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSGraphicsContext.current?.imageInterpolation = .high
+        image.draw(in: NSRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+        NSGraphicsContext.restoreGraphicsState()
+        return attachment(rep: rep, size: size)
+    }
+
+    /// The same pixels, stored at a new display size.
+    static func resized(_ cell: ResizableImageCell, to size: NSSize) -> NSTextAttachment? {
+        guard let image = cell.image else { return nil }
+        guard let source = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first,
+              let rep = source.copy() as? NSBitmapImageRep else {
+            return attachment(for: image, width: size.width) // e.g. a vector image: rasterise it
+        }
+        return attachment(rep: rep, size: size)
+    }
+
+    private static func attachment(rep: NSBitmapImageRep, size: NSSize) -> NSTextAttachment? {
+        rep.size = size
+        guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
+        let wrapper = FileWrapper(regularFileWithContents: png)
+        wrapper.preferredFilename = "image.png"
+        let attachment = NSTextAttachment(fileWrapper: wrapper)
+        let display = NSImage(size: size)
+        display.addRepresentation(rep)
+        attachment.attachmentCell = ResizableImageCell(image: display, displaySize: size)
+        return attachment
+    }
+
+    /// Gives loaded images a resizable cell. Their stored size is kept; the
+    /// cell only shrinks them to fit when the note is narrower.
+    static func prepare(_ m: NSMutableAttributedString) {
+        m.enumerateAttribute(.attachment, in: NSRange(location: 0, length: m.length)) { value, _, _ in
+            guard let attachment = value as? NSTextAttachment, !(attachment.attachmentCell is ResizableImageCell),
+                  let image = image(of: attachment), image.size.width > 0 else { return }
+            attachment.attachmentCell = ResizableImageCell(image: image, displaySize: image.size)
+        }
+    }
+}
+
 // MARK: - Formatter (shared by the floating format bar)
 
 @MainActor
@@ -99,6 +234,14 @@ final class NoteFormatter {
     @ObservationIgnored weak var textView: NoteTextView?
     var isEditing = false
     var currentStyle: NoteStyle = .body
+    /// Formatting at the caret / start of the selection, shown as active
+    /// buttons in the format bar.
+    var isBold = false
+    var isItalic = false
+    var isUnderline = false
+    var isCode = false
+    var isChecklist = false
+    var listFormat: NSTextList.MarkerFormat?
     @ObservationIgnored private var hideWork: DispatchWorkItem?
 
     func began(_ tv: NoteTextView) {
@@ -121,10 +264,34 @@ final class NoteFormatter {
 
     func refreshState() {
         guard let tv = textView, let storage = tv.textStorage else { return }
-        let loc = min(tv.selectedRange().location, max(0, storage.length - 1))
-        let font = storage.length > 0 ? storage.attribute(.font, at: loc, effectiveRange: nil) as? NSFont : tv.typingAttributes[.font] as? NSFont
-        let size = font?.pointSize ?? 15
-        currentStyle = size >= 25 ? .h1 : size >= 19 ? .h2 : (size >= 16 && (font.map { NSFontManager.shared.traits(of: $0).contains(.boldFontMask) } ?? false)) ? .h3 : .body
+        let sel = tv.selectedRange()
+        // With a caret, typing attributes are what the next keystroke gets
+        // (including a just-toggled B/I/U); with a selection, read the text.
+        let attrs: [NSAttributedString.Key: Any]
+        if sel.length > 0, sel.location < storage.length {
+            attrs = storage.attributes(at: sel.location, effectiveRange: nil)
+        } else {
+            attrs = tv.typingAttributes
+        }
+        let font = attrs[.font] as? NSFont ?? NoteFonts.body
+        let traits = NSFontManager.shared.traits(of: font)
+        let size = font.pointSize
+        let headingSized = size >= 16
+        currentStyle = size >= 25 ? .h1 : size >= 19 ? .h2 : (headingSized && traits.contains(.boldFontMask)) ? .h3 : .body
+        // Headings are semibold by definition, so B only lights up for body text.
+        isBold = !headingSized && traits.contains(.boldFontMask)
+        isItalic = traits.contains(.italicFontMask)
+        isUnderline = (attrs[.underlineStyle] as? Int ?? 0) != 0
+        isCode = NoteFonts.isMono(font)
+
+        let ns = tv.string as NSString
+        let para = ns.paragraphRange(for: NSRange(location: min(sel.location, ns.length), length: 0))
+        let style = para.location < storage.length
+            ? storage.attribute(.paragraphStyle, at: para.location, effectiveRange: nil) as? NSParagraphStyle
+            : tv.typingAttributes[.paragraphStyle] as? NSParagraphStyle
+        listFormat = style?.textLists.last?.markerFormat
+        let head = para.length >= 1 ? ns.substring(with: NSRange(location: para.location, length: 1)) : ""
+        isChecklist = head == "☐" || head == "☑"
     }
 
     // MARK: Helpers
@@ -167,6 +334,7 @@ final class NoteFormatter {
             let font = tv.typingAttributes[.font] as? NSFont ?? NoteFonts.body
             let has = fm.traits(of: font).contains(trait)
             tv.typingAttributes[.font] = has ? fm.convert(font, toNotHaveTrait: trait) : fm.convert(font, toHaveTrait: trait)
+            refreshState()
             return
         }
         let first = storage.attribute(.font, at: ranges[0].location, effectiveRange: nil) as? NSFont ?? NoteFonts.body
@@ -187,6 +355,7 @@ final class NoteFormatter {
         if ranges.isEmpty {
             let on = (tv.typingAttributes[.underlineStyle] as? Int ?? 0) != 0
             tv.typingAttributes[.underlineStyle] = on ? 0 : NSUnderlineStyle.single.rawValue
+            refreshState()
             return
         }
         let on = (storage.attribute(.underlineStyle, at: ranges[0].location, effectiveRange: nil) as? Int ?? 0) != 0
@@ -223,6 +392,7 @@ final class NoteFormatter {
         if ranges.allSatisfy({ $0.length == 0 }) {
             tv.typingAttributes[.font] = isCode ? NoteFonts.body : NoteFonts.code
             tv.typingAttributes[.backgroundColor] = isCode ? nil : Theme.nsMuted
+            refreshState()
             return
         }
         edit(ranges) { storage in
@@ -284,6 +454,7 @@ final class NoteFormatter {
         if rs.length > 0 && firstLen > 0 && rs.character(at: firstLen - 1) == 10 { firstLen -= 1 }
         tv.setSelectedRange(NSRange(location: affected.location + firstLen, length: 0))
         tv.typingAttributes[.paragraphStyle] = style
+        refreshState()
     }
 
     func toggleChecklist() {
@@ -309,6 +480,7 @@ final class NoteFormatter {
             }
         }
         if !removing && ns.length == 0 { tv.setSelectedRange(NSRange(location: 2, length: 0)) }
+        refreshState()
     }
 
     // MARK: Insertions
@@ -341,37 +513,8 @@ final class NoteFormatter {
         panel.allowsMultipleSelection = false
         panel.message = "Choose an image to insert into your note."
         guard panel.runModal() == .OK, let url = panel.url, let image = NSImage(contentsOf: url) else { return }
-        guard let attachment = Self.attachment(for: image) else { return }
-        let str = NSMutableAttributedString(attachment: attachment)
-        str.addAttributes(NoteFonts.defaultAttributes, range: NSRange(location: 0, length: str.length))
-        let range = tv.selectedRange()
-        if tv.shouldChangeText(in: range, replacementString: str.string) {
-            tv.textStorage?.replaceCharacters(in: range, with: str)
-            tv.didChangeText()
-        }
         tv.window?.makeFirstResponder(tv)
-    }
-
-    /// Downscales to a sensible width and embeds as PNG so it survives RTFD round-trips.
-    static func attachment(for image: NSImage, maxWidth: CGFloat = 560) -> NSTextAttachment? {
-        let scale = min(1, maxWidth / max(1, image.size.width))
-        let size = NSSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2), pixelsHigh: Int(size.height * 2),
-                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
-        rep.size = size
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        image.draw(in: NSRect(origin: .zero, size: size))
-        NSGraphicsContext.restoreGraphicsState()
-        guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
-        let wrapper = FileWrapper(regularFileWithContents: png)
-        wrapper.preferredFilename = "image.png"
-        let attachment = NSTextAttachment(fileWrapper: wrapper)
-        let display = NSImage(size: size)
-        display.addRepresentation(rep)
-        attachment.image = display
-        return attachment
+        tv.insertImages([image])
     }
 
     func insertTable() {
@@ -388,6 +531,44 @@ final class NoteFormatter {
 final class NoteTextView: NSTextView {
     var placeholder = ""
     var onFocusChange: ((Bool) -> Void)?
+    weak var formatter: NoteFormatter?
+
+    // MARK: Formatting shortcuts
+
+    /// ⌘B / ⌘I / ⌘U go through the formatter so they behave exactly like the
+    /// format bar (the font panel route is disabled via `usesFontPanel`).
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard window?.firstResponder === self, let formatter, formatter.textView === self,
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+              let key = event.charactersIgnoringModifiers?.lowercased() else {
+            return super.performKeyEquivalent(with: event)
+        }
+        switch key {
+        case "b": formatter.toggleTrait(.boldFontMask)
+        case "i": formatter.toggleTrait(.italicFontMask)
+        case "u": formatter.toggleUnderline()
+        default: return super.performKeyEquivalent(with: event)
+        }
+        return true
+    }
+
+    /// Format ▸ Font menu items (Bold, Italic) arrive as `addFontTrait:` from
+    /// the shared font manager.
+    override func changeFont(_ sender: Any?) {
+        guard let formatter, formatter.textView === self, let fm = sender as? NSFontManager else { return super.changeFont(sender) }
+        // Probe which trait the pending font-manager action adds.
+        let traits = fm.traits(of: fm.convert(NoteFonts.body))
+        if traits.contains(.boldFontMask) {
+            formatter.toggleTrait(.boldFontMask)
+        } else if traits.contains(.italicFontMask) {
+            formatter.toggleTrait(.italicFontMask)
+        }
+    }
+
+    override func underline(_ sender: Any?) {
+        guard let formatter, formatter.textView === self else { return super.underline(sender) }
+        formatter.toggleUnderline()
+    }
 
     /// Last measured height. Returned from `intrinsicContentSize` so SwiftUI
     /// layout passes don't re-run text layout.
@@ -409,8 +590,12 @@ final class NoteTextView: NSTextView {
 
     override func didChangeText() {
         super.didChangeText()
-        // Only ask SwiftUI to re-layout the page when the note actually grows
-        // or shrinks; most keystrokes don't change the height.
+        refreshHeight()
+    }
+
+    /// Only asks SwiftUI to re-layout the page when the note actually grows
+    /// or shrinks; most keystrokes don't change the height.
+    func refreshHeight() {
         let height = measuredHeight()
         if height != cachedHeight {
             cachedHeight = height
@@ -423,12 +608,190 @@ final class NoteTextView: NSTextView {
         super.setFrameSize(newSize)
         if widthChanged {
             textContainer?.size = NSSize(width: newSize.width - textContainerInset.width * 2, height: .greatestFiniteMagnitude)
-            let height = measuredHeight()
-            if height != cachedHeight {
-                cachedHeight = height
-                invalidateIntrinsicContentSize()
-            }
+            refreshHeight()
         }
+    }
+
+    // MARK: Images
+
+    /// Widest an image may be drawn: the note's text width.
+    var maxImageWidth: CGFloat {
+        max(NoteImages.minWidth, (textContainer?.size.width ?? frame.width) - 2 * (textContainer?.lineFragmentPadding ?? 0))
+    }
+
+    /// Inserts images at the selection, scaled to fit the note.
+    func insertImages(_ images: [NSImage]) {
+        let str = NSMutableAttributedString()
+        for image in images {
+            guard let attachment = NoteImages.attachment(for: image, width: min(maxImageWidth, image.size.width)) else { continue }
+            str.append(NSAttributedString(attachment: attachment))
+        }
+        guard str.length > 0 else { return }
+        var attrs = typingAttributes
+        attrs[.link] = nil
+        str.addAttributes(attrs, range: NSRange(location: 0, length: str.length))
+        let range = selectedRange()
+        if shouldChangeText(in: range, replacementString: str.string) {
+            textStorage?.replaceCharacters(in: range, with: str)
+            didChangeText()
+            setSelectedRange(NSRange(location: range.location + str.length, length: 0))
+        }
+    }
+
+    /// Pasted or dropped images: plain image data is embedded through
+    /// `insertImages`; rich content is pasted natively and any images in it
+    /// are then converted so they fit and can be resized.
+    override func readSelection(from pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        let richTypes: [NSPasteboard.PasteboardType] = [.rtfd, .rtf, .string, .html]
+        let hasRichText = pboard.availableType(from: richTypes) != nil
+        if !hasRichText, let images = pboard.readObjects(forClasses: [NSImage.self]) as? [NSImage], !images.isEmpty {
+            insertImages(images)
+            return true
+        }
+        let before = (string as NSString).length
+        let replaced = selectedRange()
+        guard super.readSelection(from: pboard, type: type) else { return false }
+        // The pasted text replaced the selection: its length is the growth plus what was replaced.
+        let pasted = (string as NSString).length - before + replaced.length
+        normalizeImages(in: NSRange(location: replaced.location, length: max(0, pasted)))
+        return true
+    }
+
+    /// Converts foreign image attachments in `range` into resizable ones that fit the note.
+    func normalizeImages(in range: NSRange) {
+        guard let storage = textStorage else { return }
+        let r = NSIntersectionRange(range, NSRange(location: 0, length: storage.length))
+        guard r.length > 0 else { return }
+        var changes: [(NSRange, NSTextAttachment)] = []
+        storage.enumerateAttribute(.attachment, in: r) { value, sub, _ in
+            guard let old = value as? NSTextAttachment, !(old.attachmentCell is ResizableImageCell),
+                  let image = NoteImages.image(of: old),
+                  let fresh = NoteImages.attachment(for: image, width: min(maxImageWidth, image.size.width)) else { return }
+            changes.append((sub, fresh))
+        }
+        guard !changes.isEmpty else { return }
+        storage.beginEditing()
+        for (sub, fresh) in changes { storage.addAttribute(.attachment, value: fresh, range: sub) }
+        storage.endEditing()
+        didChangeText()
+    }
+
+    /// The selected image, when the selection is exactly one image.
+    private var selectedImage: (index: Int, cell: ResizableImageCell, rect: NSRect)? {
+        let sel = selectedRange()
+        guard sel.length == 1 else { return nil }
+        return image(at: sel.location)
+    }
+
+    private func image(at index: Int) -> (index: Int, cell: ResizableImageCell, rect: NSRect)? {
+        guard let storage = textStorage, let lm = layoutManager, index < storage.length,
+              let attachment = storage.attribute(.attachment, at: index, effectiveRange: nil) as? NSTextAttachment,
+              let cell = attachment.attachmentCell as? ResizableImageCell else { return nil }
+        let glyphs = lm.glyphRange(forCharacterRange: NSRange(location: index, length: 1), actualCharacterRange: nil)
+        let line = lm.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
+        let loc = lm.location(forGlyphAt: glyphs.location)
+        let size = lm.attachmentSize(forGlyphAt: glyphs.location)
+        guard size.width > 0 else { return nil }
+        // Attachments sit on the baseline: their bottom edge is at the glyph location.
+        let rect = NSRect(x: line.minX + loc.x, y: line.minY + loc.y - size.height, width: size.width, height: size.height)
+            .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        return (index, cell, rect)
+    }
+
+    private func imageIndex(at point: NSPoint) -> Int? {
+        guard let lm = layoutManager, let tc = textContainer else { return nil }
+        let p = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        let glyph = lm.glyphIndex(for: p, in: tc, fractionOfDistanceThroughGlyph: nil)
+        let index = lm.characterIndexForGlyph(at: glyph)
+        guard let hit = image(at: index), hit.rect.contains(point) else { return nil }
+        return index
+    }
+
+    private static let handleSize: CGFloat = 10
+
+    private func handleRect(for rect: NSRect) -> NSRect {
+        let s = Self.handleSize
+        return NSRect(x: rect.maxX - s / 2 - 1, y: rect.maxY - s / 2 - 1, width: s, height: s)
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        if let selected = selectedImage {
+            addCursorRect(handleRect(for: selected.rect).insetBy(dx: -3, dy: -3), cursor: .frameResize(position: .bottomRight, directions: .all))
+        }
+    }
+
+    /// Drags the selected image's corner handle. The size updates live; the
+    /// new size is stored in the image itself (PNG resolution) on release so
+    /// it survives saving.
+    private func trackResize(_ hit: (index: Int, cell: ResizableImageCell, rect: NSRect), from start: NSPoint) {
+        let startSize = hit.rect.size
+        let original = hit.cell.displaySize
+        let aspect = startSize.height / max(1, startSize.width)
+        var size = startSize
+        let charRange = NSRange(location: hit.index, length: 1)
+        while let event = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            let p = convert(event.locationInWindow, from: nil)
+            // Follow whichever axis moved further so diagonal drags feel natural.
+            let dx = p.x - start.x
+            let dy = (p.y - start.y) / max(aspect, 0.01)
+            let w = min(maxImageWidth, max(NoteImages.minWidth, startSize.width + (abs(dx) >= abs(dy) ? dx : dy))).rounded()
+            size = NSSize(width: w, height: (w * aspect).rounded())
+            hit.cell.displaySize = size
+            layoutManager?.invalidateLayout(forCharacterRange: charRange, actualCharacterRange: nil)
+            refreshHeight()
+            needsDisplay = true
+            if event.type == .leftMouseUp { break }
+        }
+        hit.cell.displaySize = original
+        setImageSize(at: hit.index, to: size)
+    }
+
+    /// Replaces the image at `index` with one stored at `size` (undoable).
+    func setImageSize(at index: Int, to size: NSSize) {
+        guard let storage = textStorage, let hit = image(at: index),
+              let fresh = NoteImages.resized(hit.cell, to: size) else { return }
+        let range = NSRange(location: index, length: 1)
+        guard shouldChangeText(in: range, replacementString: nil) else { return }
+        storage.addAttribute(.attachment, value: fresh, range: range)
+        didChangeText()
+        setSelectedRange(range)
+        undoManager?.setActionName("Resize Image")
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let base = super.menu(for: event)
+        let point = convert(event.locationInWindow, from: nil)
+        guard let index = imageIndex(at: point) else { return base }
+        setSelectedRange(NSRange(location: index, length: 1))
+        let menu = NSMenu()
+        let sizes: [(String, CGFloat)] = [("Small", 1.0 / 3), ("Medium", 0.5), ("Large", 0.75), ("Fit Width", 1)]
+        for (title, fraction) in sizes {
+            let item = NSMenuItem(title: title, action: #selector(resizeFromMenu(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = [index, fraction] as [Any]
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        for item in base?.items ?? [] {
+            base?.removeItem(item)
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func resizeFromMenu(_ sender: NSMenuItem) {
+        guard let info = sender.representedObject as? [Any], let index = info[0] as? Int, let fraction = info[1] as? CGFloat,
+              let hit = image(at: index) else { return }
+        let aspect = hit.rect.height / max(1, hit.rect.width)
+        let w = max(NoteImages.minWidth, (maxImageWidth * fraction).rounded())
+        setImageSize(at: index, to: NSSize(width: w, height: (w * aspect).rounded()))
     }
 
     override func becomeFirstResponder() -> Bool {
@@ -445,6 +808,17 @@ final class NoteTextView: NSTextView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        if let selected = selectedImage, window?.firstResponder === self {
+            let outline = NSBezierPath(rect: selected.rect.insetBy(dx: -1, dy: -1))
+            outline.lineWidth = 2
+            Theme.nsAccent.setStroke()
+            outline.stroke()
+            let handle = NSBezierPath(roundedRect: handleRect(for: selected.rect), xRadius: 2, yRadius: 2)
+            NSColor.white.setFill()
+            handle.fill()
+            handle.lineWidth = 1.5
+            handle.stroke()
+        }
         if string.isEmpty && !placeholder.isEmpty && window?.firstResponder === self {
             let attrs: [NSAttributedString.Key: Any] = [.font: NoteFonts.body, .foregroundColor: Theme.nsTextTertiary]
             (placeholder as NSString).draw(at: NSPoint(x: textContainerInset.width + (textContainer?.lineFragmentPadding ?? 0),
@@ -456,6 +830,19 @@ final class NoteTextView: NSTextView {
     override func mouseDown(with event: NSEvent) {
         guard let lm = layoutManager, let tc = textContainer, let storage = textStorage else { return super.mouseDown(with: event) }
         let p = convert(event.locationInWindow, from: nil)
+
+        // Images: the corner handle of a selected image resizes it; a click
+        // on an unselected image selects it (a second press drags it as usual).
+        if let selected = selectedImage, handleRect(for: selected.rect).insetBy(dx: -4, dy: -4).contains(p) {
+            window?.makeFirstResponder(self)
+            trackResize(selected, from: p)
+            return
+        }
+        if event.clickCount == 1, let index = imageIndex(at: p), selectedRange() != NSRange(location: index, length: 1) {
+            window?.makeFirstResponder(self)
+            setSelectedRange(NSRange(location: index, length: 1))
+            return
+        }
         let point = NSPoint(x: p.x - textContainerOrigin.x, y: p.y - textContainerOrigin.y)
         let glyph = lm.glyphIndex(for: point, in: tc, fractionOfDistanceThroughGlyph: nil)
         let rect = lm.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: tc).insetBy(dx: -2, dy: -2)
@@ -527,6 +914,7 @@ struct RichTextEditor: NSViewRepresentable {
 
         storage.setAttributedString(NoteCodec.load(block))
         tv.delegate = context.coordinator
+        tv.formatter = formatter
         context.coordinator.textView = tv
         tv.onFocusChange = { [weak tv, weak formatter] focused in
             guard let tv, let formatter else { return }
@@ -721,14 +1109,14 @@ struct NoteFormatBar: View {
 
     @ViewBuilder private var bar: some View {
         divider
-        formatButton("bold", "Bold (⌘B)") { formatter.toggleTrait(.boldFontMask) }
-        formatButton("italic", "Italic (⌘I)") { formatter.toggleTrait(.italicFontMask) }
-        formatButton("underline", "Underline (⌘U)") { formatter.toggleUnderline() }
+        formatButton("bold", "Bold (⌘B)", active: formatter.isBold) { formatter.toggleTrait(.boldFontMask) }
+        formatButton("italic", "Italic (⌘I)", active: formatter.isItalic) { formatter.toggleTrait(.italicFontMask) }
+        formatButton("underline", "Underline (⌘U)", active: formatter.isUnderline) { formatter.toggleUnderline() }
         divider
-        formatButton("list.bullet", "Bulleted list  (type “- ”)") { formatter.toggleList(.disc) }
-        formatButton("list.number", "Numbered list  (type “1. ”)") { formatter.toggleList(.decimal) }
-        formatButton("checklist", "Checklist  (type “[] ”)") { formatter.toggleChecklist() }
-        formatButton("chevron.left.forwardslash.chevron.right", "Code  (type ```)") { formatter.toggleCode() }
+        formatButton("list.bullet", "Bulleted list  (type “- ”)", active: formatter.listFormat == .disc) { formatter.toggleList(.disc) }
+        formatButton("list.number", "Numbered list  (type “1. ”)", active: formatter.listFormat == .decimal) { formatter.toggleList(.decimal) }
+        formatButton("checklist", "Checklist  (type “[] ”)", active: formatter.isChecklist) { formatter.toggleChecklist() }
+        formatButton("chevron.left.forwardslash.chevron.right", "Code  (type ```)", active: formatter.isCode) { formatter.toggleCode() }
         divider
     }
 
@@ -736,20 +1124,25 @@ struct NoteFormatBar: View {
         Rectangle().fill(Theme.border).frame(width: 1, height: 18).padding(.horizontal, 3)
     }
 
-    private func glyph(_ symbol: String) -> some View {
+    /// `active` marks formatting applied at the caret/selection (DESIGN.md §13 Notes):
+    /// a soft `sidebarActive` pill with a `textPrimary` icon, like other selected states.
+    private func glyph(_ symbol: String, active: Bool = false) -> some View {
         Image(systemName: symbol)
-            .font(.system(size: 13))
-            .foregroundStyle(Theme.textSecondary)
+            .font(.system(size: 13, weight: active ? .semibold : .regular))
+            .foregroundStyle(active ? Theme.textPrimary : Theme.textSecondary)
             .frame(width: 28, height: 26)
+            .background(active ? Theme.sidebarActive : .clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .contentShape(Rectangle())
             .hoverHighlight(cornerRadius: 6)
+            .animation(Motion.hover, value: active)
     }
 
-    private func formatButton(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { glyph(symbol) }
+    private func formatButton(_ symbol: String, _ help: String, active: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) { glyph(symbol, active: active) }
             .buttonStyle(.plain)
             .help(help)
             .accessibilityLabel(help)
+            .accessibilityAddTraits(active ? .isSelected : [])
     }
 
     private func applyLink() {

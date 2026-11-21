@@ -31,7 +31,7 @@ enum UISnapshotHarness {
         let h = block(.heading, 0, physics); h.text = "Thermodynamics"; h.level = 1
         let t = block(.text, 1, physics)
         t.text = "The first law states that energy is conserved. Heat added to a system equals the change in internal energy plus the work done by the system."
-        t.richData = NoteCodec.make(plain: t.text)
+        t.richData = noteWithListAndImage(t.text)
         let c = block(.callout, 2, physics); c.text = "Exam tip: always state your sign convention for work."; c.tone = .yellow
         let deck = Deck(name: "Thermo definitions"); context.insert(deck); deck.subject = physics
         for (f, b) in [("Entropy", "A measure of disorder"), ("Enthalpy", "H = U + pV"), ("Adiabatic", "No heat exchange")] {
@@ -71,6 +71,35 @@ enum UISnapshotHarness {
         context.insert(habit)
         for d in 1..<5 { let ch = HabitCheck(day: cal.date(byAdding: .day, value: -d, to: today)!); context.insert(ch); ch.habit = habit }
         try? context.save()
+    }
+
+    /// A note with a bulleted list and an image wider than the reading column,
+    /// stored as RTFD like a real note, so snapshots show list markers surviving
+    /// a save/load and wide images fitting instead of being clipped.
+    @MainActor
+    static func noteWithListAndImage(_ text: String) -> Data? {
+        let s = NSMutableAttributedString(string: text + "\n", attributes: NoteFonts.defaultAttributes)
+        let list = NSTextList(markerFormat: .disc, options: 0)
+        let style = NoteFonts.paragraph.mutableCopy() as! NSMutableParagraphStyle
+        style.textLists = [list]
+        style.headIndent = 28
+        style.tabStops = [NSTextTab(textAlignment: .left, location: 8), NSTextTab(textAlignment: .left, location: 28)]
+        var listAttrs = NoteFonts.defaultAttributes
+        listAttrs[.paragraphStyle] = style
+        for item in ["Energy is conserved", "Entropy never decreases"] {
+            s.append(NSAttributedString(string: "\t\(list.marker(forItemNumber: 1))\t\(item)\n", attributes: listAttrs))
+        }
+        let wide = NSImage(size: NSSize(width: 1600, height: 400), flipped: false) { r in
+            NSColor.systemTeal.setFill(); r.fill()
+            NSColor.white.setFill(); NSRect(x: r.maxX - 120, y: 40, width: 80, height: 80).fill()
+            return true
+        }
+        if let rep = NSBitmapImageRep(data: wide.tiffRepresentation ?? Data()), let png = rep.representation(using: .png, properties: [:]) {
+            let wrapper = FileWrapper(regularFileWithContents: png)
+            wrapper.preferredFilename = "wide.png"
+            s.append(NSAttributedString(attachment: NSTextAttachment(fileWrapper: wrapper)))
+        }
+        return NoteCodec.encode(s)
     }
 
     @MainActor
