@@ -16,6 +16,11 @@ struct ContentView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var showSidebar: Bool { router.sidebarVisible && !router.isFocusMode }
+    /// Whether the sidebar takes up layout width. Normally follows `showSidebar`
+    /// with the slide; with Reduce Motion it changes without animation and,
+    /// when hiding, only after the sidebar has faded out.
+    @State private var sidebarSlotOpen: Bool?
+    private var sidebarSlot: Bool { sidebarSlotOpen ?? showSidebar }
 
     private var promptShown: Binding<Bool> {
         Binding(get: { engine.prompt != nil }, set: { if !$0 { engine.dismissPrompt() } })
@@ -36,16 +41,16 @@ struct ContentView: View {
                 // hierarchy instead made the card jump.
                 SidebarView()
                     .frame(width: Layout.sidebarWidth)
-                    .offset(x: showSidebar || reduceMotion ? 0 : -Layout.sidebarWidth)
                     .opacity(showSidebar ? 1 : 0)
-                    .frame(width: showSidebar ? Layout.sidebarWidth : 0, alignment: .leading)
+                    .animation(reduceMotion ? Motion.fade : Motion.sidebar, value: showSidebar)
+                    .frame(width: sidebarSlot ? Layout.sidebarWidth : 0, alignment: .trailing)
                     .clipped()
                     .allowsHitTesting(showSidebar)
                     .accessibilityHidden(!showSidebar)
                 WorkspaceCard {
                     DetailView()
                 }
-                .padding(.leading, showSidebar ? 0 : Space.sm)
+                .padding(.leading, sidebarSlot ? 0 : Space.sm)
                 .padding(.trailing, Space.sm)
                 .padding(.bottom, Space.sm)
             }
@@ -53,9 +58,25 @@ struct ContentView: View {
         .background(Theme.canvas)
         .ignoresSafeArea(.container, edges: .top)
         .frame(minWidth: 960, minHeight: 640)
-        .animation(reduceMotion ? Motion.fade : Motion.sidebar, value: showSidebar)
         .onAppear {
             engine.modelContext = context
+            sidebarSlotOpen = showSidebar
+        }
+        .onChange(of: showSidebar) { _, open in
+            guard reduceMotion else {
+                withAnimation(Motion.sidebar) { sidebarSlotOpen = open }
+                return
+            }
+            // Reduce Motion: no slide. Fade the sidebar, then collapse its slot.
+            if open {
+                withTransaction(Transaction(animation: nil)) { sidebarSlotOpen = true }
+            } else {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.18))
+                    guard !showSidebar else { return }
+                    withTransaction(Transaction(animation: nil)) { sidebarSlotOpen = false }
+                }
+            }
         }
         .alert(promptTitle, isPresented: promptShown, presenting: engine.prompt) { prompt in
             if prompt.next == .focus {

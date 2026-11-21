@@ -75,15 +75,17 @@ enum NoteCodec {
         let ns = m.string as NSString
         var inserts: [(Int, NSAttributedString)] = []
         var loc = 0
-        var previous: NSTextList.MarkerFormat?
+        // Each list created by toggleList is its own NSTextList, and RTFD keeps
+        // them distinct, so adjacent lists restart their numbering.
+        var previous: NSTextList?
         var number = 0
         while loc < ns.length {
             let para = ns.paragraphRange(for: NSRange(location: loc, length: 0))
             loc = para.location + para.length
             let style = m.attribute(.paragraphStyle, at: para.location, effectiveRange: nil) as? NSParagraphStyle
             guard let list = style?.textLists.last else { previous = nil; continue }
-            number = previous == list.markerFormat ? number + 1 : list.startingItemNumber
-            previous = list.markerFormat
+            number = previous === list ? number + 1 : list.startingItemNumber
+            previous = list
             if ns.substring(with: para).hasPrefix("\t") { continue }
             var attrs = m.attributes(at: para.location, effectiveRange: nil)
             attrs[.link] = nil
@@ -556,12 +558,16 @@ final class NoteTextView: NSTextView {
     /// the shared font manager.
     override func changeFont(_ sender: Any?) {
         guard let formatter, formatter.textView === self, let fm = sender as? NSFontManager else { return super.changeFont(sender) }
-        // Probe which trait the pending font-manager action adds.
-        let traits = fm.traits(of: fm.convert(NoteFonts.body))
-        if traits.contains(.boldFontMask) {
-            formatter.toggleTrait(.boldFontMask)
-        } else if traits.contains(.italicFontMask) {
-            formatter.toggleTrait(.italicFontMask)
+        // Probe what the pending font-manager action does: adding a trait shows
+        // on a plain font, removing one shows on a font that already has it.
+        for (trait, isOn) in [(NSFontTraitMask.boldFontMask, formatter.isBold), (.italicFontMask, formatter.isItalic)] {
+            let plain = NoteFonts.body
+            let styled = fm.convert(plain, toHaveTrait: trait)
+            let adds = fm.traits(of: fm.convert(plain)).contains(trait)
+            let removes = fm.traits(of: styled).contains(trait) && !fm.traits(of: fm.convert(styled)).contains(trait)
+            guard adds || removes else { continue }
+            if adds != isOn { formatter.toggleTrait(trait) }
+            return
         }
     }
 
