@@ -13,6 +13,7 @@ Notes, flashcards, PDFs, quizzes, tasks and a focus timer — organised by subje
 [![Swift](https://img.shields.io/badge/Swift-5-F05138?logo=swift&logoColor=white)](https://www.swift.org)
 [![SwiftUI + SwiftData](https://img.shields.io/badge/built%20with-SwiftUI%20%2B%20SwiftData-0A84FF?logo=swift&logoColor=white)](https://developer.apple.com/xcode/swiftui/)
 <br>
+[![product hunt](https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1325268&theme=light&t=1795282194927)]
 [![Last commit](https://img.shields.io/github/last-commit/theopenlauncher/open-study)](https://github.com/theopenlauncher/open-study/commits/main)
 [![Open issues](https://img.shields.io/github/issues/theopenlauncher/open-study)](https://github.com/theopenlauncher/open-study/issues)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-B7791F)](CONTRIBUTING.md)
