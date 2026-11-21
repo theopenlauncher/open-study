@@ -376,6 +376,7 @@ final class NoteFormatter {
         let ranges = paragraphRanges()
         if tv.string.isEmpty || ranges.allSatisfy({ $0.length == 0 }) {
             tv.typingAttributes[.font] = style.font
+            refreshState()
             currentStyle = style
             return
         }
@@ -383,6 +384,8 @@ final class NoteFormatter {
             for r in ranges where r.length > 0 { storage.addAttribute(.font, value: style.font, range: r) }
         }
         tv.typingAttributes[.font] = style.font
+        // The style font replaces any bold/italic, so the B/I state must follow.
+        refreshState()
         currentStyle = style
     }
 
@@ -558,6 +561,8 @@ final class NoteTextView: NSTextView {
     /// the shared font manager.
     override func changeFont(_ sender: Any?) {
         guard let formatter, formatter.textView === self, let fm = sender as? NSFontManager else { return super.changeFont(sender) }
+        // Compare against the real font at the caret/selection, not cached state.
+        formatter.refreshState()
         // Probe what the pending font-manager action does: adding a trait shows
         // on a plain font, removing one shows on a font that already has it.
         for (trait, isOn) in [(NSFontTraitMask.boldFontMask, formatter.isBold), (.italicFontMask, formatter.isItalic)] {
