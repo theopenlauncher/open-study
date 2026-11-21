@@ -34,6 +34,7 @@ enum PrefKey {
     static let autoStartBreaks = "autoStartBreaks"
     static let autoStartFocus = "autoStartFocus"
     static let playSound = "playSound"
+    static let timerSound = "timerSound"
     static let notificationsEnabled = "notificationsEnabled"
     static let dailyGoalMinutes = "dailyGoalMinutes"
     static let appearance = "appearance"
@@ -43,11 +44,34 @@ enum PrefKey {
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, longBreakEvery: 4,
-            autoStartBreaks: true, autoStartFocus: false, playSound: true, notificationsEnabled: true,
+            // Breaks wait for the user by default: a prompt offers to start them (DESIGN.md §13).
+            autoStartBreaks: false, autoStartFocus: false, playSound: true, timerSound: "Glass", notificationsEnabled: true,
             dailyGoalMinutes: 120, appearance: "system", sidebarVisible: true,
             analyticsEnabled: true,
         ])
     }
+}
+
+/// Built-in macOS alert sounds offered for the end of a phase.
+enum TimerSound {
+    static let all = ["Glass", "Hero", "Ping", "Submarine", "Purr", "Pop", "Tink", "Blow", "Bottle", "Frog", "Funk", "Morse", "Sosumi", "Basso"]
+
+    static func play(_ name: String? = nil) {
+        let name = name ?? UserDefaults.standard.string(forKey: PrefKey.timerSound) ?? "Glass"
+        let sound = NSSound(named: NSSound.Name(name)) ?? NSSound(named: "Glass")
+        sound?.stop()
+        sound?.play()
+    }
+}
+
+/// Shown when a phase finishes and the next one doesn't start on its own.
+struct PhasePrompt: Identifiable, Equatable {
+    let id = UUID()
+    let finished: PomodoroPhase
+    let next: PomodoroPhase
+    let nextMinutes: Int
+    /// Which focus session of the cycle comes next (1-based).
+    let sessionNumber: Int
 }
 
 @MainActor
@@ -62,6 +86,8 @@ final class PomodoroEngine {
     private(set) var completedFocusInCycle = 0
     /// Increments whenever a session is logged so views can refresh.
     private(set) var lastLoggedAt: Date?
+    /// Set when a phase ends without auto-starting the next; the main window asks what to do.
+    var prompt: PhasePrompt?
 
     var subjectID: UUID?
     var taskTitle: String = ""
@@ -111,6 +137,7 @@ final class PomodoroEngine {
 
     func start() {
         guard state != .running else { return }
+        prompt = nil
         if state == .idle {
             phaseDuration = duration(for: phase)
             remaining = phaseDuration
@@ -137,6 +164,7 @@ final class PomodoroEngine {
     func toggle() { state == .running ? pause() : start() }
 
     func reset() {
+        prompt = nil
         logPartialIfNeeded()
         stopTicking()
         cancelNotification()
@@ -197,11 +225,12 @@ final class PomodoroEngine {
             logSession(seconds: phaseDuration, completed: true)
             completedFocusInCycle += 1
         }
-        if defaults.bool(forKey: PrefKey.playSound) { NSSound(named: "Glass")?.play() }
+        if defaults.bool(forKey: PrefKey.playSound) { TimerSound.play() }
         advance(afterCompleting: true)
     }
 
     private func advance(afterCompleting: Bool) {
+        prompt = nil
         let finished = phase
         state = .idle
         endDate = nil
@@ -216,8 +245,32 @@ final class PomodoroEngine {
         resetDurations()
         guard afterCompleting else { return }
         let auto = phase == .focus ? defaults.bool(forKey: PrefKey.autoStartFocus) : defaults.bool(forKey: PrefKey.autoStartBreaks)
-        if auto { start() }
+        if auto {
+            start()
+        } else {
+            let every = max(1, defaults.integer(forKey: PrefKey.longBreakEvery))
+            prompt = PhasePrompt(finished: finished, next: phase, nextMinutes: Int(phaseDuration / 60),
+                                 sessionNumber: completedFocusInCycle % every + 1)
+            NSApp.requestUserAttention(.informationalRequest)
+        }
     }
+
+    // MARK: Prompt actions
+
+    /// Starts the phase the prompt offers.
+    func acceptPrompt() {
+        prompt = nil
+        start()
+    }
+
+    /// Skips the offered break and starts the next focus session.
+    func skipBreakFromPrompt() {
+        prompt = nil
+        select(.focus)
+        start()
+    }
+
+    func dismissPrompt() { prompt = nil }
 
     // MARK: Logging
 

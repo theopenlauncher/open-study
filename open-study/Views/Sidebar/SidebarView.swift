@@ -114,6 +114,11 @@ struct SidebarView: View {
             Text("Open Study")
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
+            Spacer(minLength: 0)
+            IconButton(symbol: "sidebar.left", help: "Hide sidebar (⌃⌘S)", size: 24, onCanvas: true) {
+                withAnimation(Motion.sidebar) { router.sidebarVisible = false }
+            }
+            .padding(.trailing, -(10 - Space.xs))
         }
         .padding(.horizontal, Space.md + 10)
         .padding(.top, Space.md)

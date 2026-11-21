@@ -132,12 +132,12 @@ Rules:
 The sidebar sits directly on `canvas` — it is not a separate panel and has no border of its own. The workspace card's edge *is* the separator, exactly as in the reference.
 
 **Dimensions**
-- Width: **232pt** fixed (collapsible). Collapses with a 0.25s ease‑out slide; toggle with the sidebar button in the top strip or **⌃⌘S**.
-- Top strip: **30pt** tall, full window width, `canvas`. Traffic lights sit in it; the sidebar toggle button sits immediately to their right (x = 78pt). Its right side carries the live timer pill.
+- Width: **232pt** fixed (collapsible). Collapses with a 0.25s ease‑out slide: the sidebar stays in the layout and its slot animates to 0, so it slides out while the workspace card widens in the same motion (with Reduce Motion it fades). Hide it with the close button in the brand row, show it again with the button in the top strip, or toggle with **⌃⌘S**.
+- Top strip: **30pt** tall, full window width, `canvas`. Traffic lights sit in it; while the sidebar is hidden, a "Show sidebar" button sits immediately to their right (x = 78pt) and fades out once the sidebar is open. Its right side carries the live timer pill.
 - Horizontal padding: 12pt. Rows are inset 12pt from the window edge, so the active pill floats.
 
 **Structure (top → bottom)**
-1. **Brand row** — app glyph (SF Symbol `books.vertical.fill`, 17pt, `ink`) + "Open Study" in 19pt semibold, 12pt left inset, 14pt bottom margin. Mirrors the Flow logotype row.
+1. **Brand row** — app glyph (SF Symbol `books.vertical.fill`, 17pt, `ink`) + "Open Study" in 19pt semibold, 12pt left inset, 14pt bottom margin. Mirrors the Flow logotype row. A 24pt `sidebar.left` icon button sits at its trailing edge to hide the sidebar ("Hide sidebar (⌃⌘S)").
 2. **Global navigation** — Home, Calendar, Tasks, Flashcards, Statistics, Focus.
 3. **Subjects** — `label` heading "SUBJECTS" with a `+` icon button aligned right; the subject list; an inline "New subject" row when the list is empty.
 4. **Flexible space.**
@@ -316,6 +316,9 @@ Examples:
 ### Notes (text blocks)
 - Borderless, `reading` style; placeholder "Write something, or press / for blocks" only while empty and focused.
 - **Formatting bar** appears only while a note is being edited: a compact `raised` pill (radius 10, `border`, `shadowFloat`) floating at the bottom centre of the page with: Style menu (Text, H1, H2, H3), B, I, U, bullet list, numbered list, checklist, code, link, image, table. Hidden otherwise — advanced formatting is available when needed but never occupies space or covers the text being edited. *(Changed during implementation from "docked above the block": floating above a block covered the previous block's content.)*
+- Format bar buttons show the formatting at the caret or selection: B, I, U, list, checklist and code buttons that are on get a `sidebarActive` pill and a `textPrimary` icon (the same soft-pill language as the sidebar's active row). **⌘B / ⌘I / ⌘U** toggle the same formatting as the buttons.
+- Lines typed into the trailing "Type / for blocks" field become a note, and the caret moves into it, so following lines are paragraphs of one note (selectable together, e.g. to make a list).
+- **Images** (inserted, pasted or dropped) are scaled to fit the note's width and are never clipped; if the note gets narrower they shrink with it. Click an image to select it (2pt `accent` outline with a white square handle at the bottom-right); drag the handle to resize, keeping the aspect ratio. Right-click offers Small (⅓), Medium (½), Large (¾) and Fit Width. The chosen size is saved with the image.
 - Deleting a block with content always asks for confirmation; empty blocks are removed immediately. The confirmation explains what is kept (tasks, decks, PDFs and quizzes outlive their blocks).
 - Markdown shortcuts: `# `, `## `, `### `, `- `, `1. `, `[] `, ``` ``` ```.
 - Inline code / code paragraphs: SF Mono 13 on `muted`.
@@ -329,6 +332,7 @@ Examples:
 - Timer ring: 2pt track `border`, 4pt progress `ink`, phase label above (`label`), time in `displayXL` (focus mode) or `numeral` (block).
 - Phase colours are *not* used; phase is communicated by label and a small dot (focus = ink, break = success).
 - Top-strip pill when running: capsule `raised` + border, dot + `mm:ss` monospaced + phase; click → Focus.
+- When a phase ends the chosen alert sound plays (a built-in macOS sound picked in Settings, default Glass). Unless "start automatically" is on for the next phase, a native alert asks what to do: after focus — "Focus session complete" · **Start 5-min Break** (default) · Skip Break · Later; after a break — "Break's over" · **Start Session 2** (default) · Later. The Dock icon bounces once if the app is in the background. Breaks no longer start automatically by default.
 - Focus mode: the card is mostly empty `surface`. Centre: timer; under it the current task (`title`) and subject chip; one row of controls (start/pause primary, reset, skip as ghost). Nothing else.
 
 ### Tasks
@@ -355,7 +359,7 @@ Examples:
 - Habit rows: symbol, name, 7-day dot strip (filled `ink` = done), streak "🔥"-free text ("5 days"), toggle for today. Manager sheet shows 16-week heatmap per habit with current/longest streak.
 
 ### Settings
-- Native `Form` with `.grouped` style inside the workspace card; sections: Focus timer, Notifications, Study goal, Appearance, Data.
+- Native `Form` with `.grouped` style inside the workspace card; sections: Focus timer, Notifications (including the end-of-phase Sound picker, which previews on change), Study goal, Appearance, Data.
 
 ---
 

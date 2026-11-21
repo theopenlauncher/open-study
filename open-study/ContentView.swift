@@ -14,21 +14,46 @@ struct ContentView: View {
     @Environment(PomodoroEngine.self) private var engine
     @Environment(\.modelContext) private var context
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var showSidebar: Bool { router.sidebarVisible && !router.isFocusMode }
+    /// Whether the sidebar takes up layout width. Normally follows `showSidebar`
+    /// with the slide; with Reduce Motion it changes without animation and,
+    /// when hiding, only after the sidebar has faded out.
+    @State private var sidebarSlotOpen: Bool?
+    /// Bumped on every show/hide so a delayed collapse from an earlier hide
+    /// can tell it has been superseded by a later toggle.
+    @State private var sidebarToggleGeneration = 0
+    private var sidebarSlot: Bool { sidebarSlotOpen ?? showSidebar }
+
+    private var promptShown: Binding<Bool> {
+        Binding(get: { engine.prompt != nil }, set: { if !$0 { engine.dismissPrompt() } })
+    }
+
+    private var promptTitle: String {
+        guard let prompt = engine.prompt else { return "" }
+        return prompt.finished == .focus ? "Focus session complete" : "Break's over"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             TopStrip()
             HStack(spacing: 0) {
-                if showSidebar {
-                    SidebarView()
-                        .frame(width: Layout.sidebarWidth)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                }
+                // The sidebar stays in the layout and its slot animates between
+                // 0 and full width, so it slides out while the workspace card
+                // widens in the same motion (DESIGN.md §4). Removing it from the
+                // hierarchy instead made the card jump.
+                SidebarView()
+                    .frame(width: Layout.sidebarWidth)
+                    .opacity(showSidebar ? 1 : 0)
+                    .animation(reduceMotion ? Motion.fade : Motion.sidebar, value: showSidebar)
+                    .frame(width: sidebarSlot ? Layout.sidebarWidth : 0, alignment: .trailing)
+                    .clipped()
+                    .allowsHitTesting(showSidebar)
+                    .accessibilityHidden(!showSidebar)
                 WorkspaceCard {
                     DetailView()
                 }
-                .padding(.leading, showSidebar ? 0 : Space.sm)
+                .padding(.leading, sidebarSlot ? 0 : Space.sm)
                 .padding(.trailing, Space.sm)
                 .padding(.bottom, Space.sm)
             }
@@ -36,9 +61,43 @@ struct ContentView: View {
         .background(Theme.canvas)
         .ignoresSafeArea(.container, edges: .top)
         .frame(minWidth: 960, minHeight: 640)
-        .animation(Motion.sidebar, value: showSidebar)
         .onAppear {
             engine.modelContext = context
+            sidebarSlotOpen = showSidebar
+        }
+        .onChange(of: showSidebar) { _, open in
+            sidebarToggleGeneration += 1
+            guard reduceMotion else {
+                withAnimation(Motion.sidebar) { sidebarSlotOpen = open }
+                return
+            }
+            // Reduce Motion: no slide. Fade the sidebar, then collapse its slot.
+            if open {
+                withTransaction(Transaction(animation: nil)) { sidebarSlotOpen = true }
+            } else {
+                let generation = sidebarToggleGeneration
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.18))
+                    // A later show or hide owns the slot now; its own fade decides.
+                    guard generation == sidebarToggleGeneration, !showSidebar else { return }
+                    withTransaction(Transaction(animation: nil)) { sidebarSlotOpen = false }
+                }
+            }
+        }
+        .alert(promptTitle, isPresented: promptShown, presenting: engine.prompt) { prompt in
+            if prompt.next == .focus {
+                Button("Start Session \(prompt.sessionNumber)") { engine.acceptPrompt() }
+                    .keyboardShortcut(.defaultAction)
+            } else {
+                Button("Start \(prompt.nextMinutes)-min Break") { engine.acceptPrompt() }
+                    .keyboardShortcut(.defaultAction)
+                Button("Skip Break") { engine.skipBreakFromPrompt() }
+            }
+            Button("Later", role: .cancel) { engine.dismissPrompt() }
+        } message: { prompt in
+            Text(prompt.next == .focus
+                 ? "Ready for focus session \(prompt.sessionNumber)? It runs for \(prompt.nextMinutes) minutes."
+                 : "Nice work. Take a \(prompt.nextMinutes)-minute \(prompt.next == .longBreak ? "long break" : "break") before the next session.")
         }
         #if DEBUG
         .task {
@@ -109,10 +168,13 @@ private struct TopStrip: View {
     var body: some View {
         HStack(spacing: Space.sm) {
             Color.clear.frame(width: 70) // traffic lights
-            if !router.isFocusMode {
-                IconButton(symbol: "sidebar.left", help: router.sidebarVisible ? "Hide sidebar (⌃⌘S)" : "Show sidebar (⌃⌘S)", onCanvas: true) {
-                    withAnimation(Motion.sidebar) { router.sidebarVisible.toggle() }
+            // Only needed to bring the sidebar back: while it's open, its own
+            // brand-row button hides it.
+            if !router.isFocusMode && !router.sidebarVisible {
+                IconButton(symbol: "sidebar.left", help: "Show sidebar (⌃⌘S)", onCanvas: true) {
+                    withAnimation(Motion.sidebar) { router.sidebarVisible = true }
                 }
+                .transition(.opacity)
             }
             Spacer()
             if engine.isActive && !router.isFocusMode {
@@ -124,6 +186,7 @@ private struct TopStrip: View {
         .frame(height: Layout.topStrip, alignment: .center)
         .padding(.top, 1)
         .animation(Motion.fade, value: engine.isActive)
+        .animation(Motion.fade, value: router.sidebarVisible)
     }
 }
 
