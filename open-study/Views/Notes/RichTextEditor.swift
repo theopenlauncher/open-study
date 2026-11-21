@@ -76,16 +76,21 @@ enum NoteCodec {
         var inserts: [(Int, NSAttributedString)] = []
         var loc = 0
         // Each list created by toggleList is its own NSTextList, and RTFD keeps
-        // them distinct, so adjacent lists restart their numbering.
-        var previous: NSTextList?
+        // them distinct, so numbering is tracked per list: adjacent separate
+        // lists restart, and an outer list continues after nested items.
+        var counters: [ObjectIdentifier: Int] = [:]
         var number = 0
         while loc < ns.length {
             let para = ns.paragraphRange(for: NSRange(location: loc, length: 0))
             loc = para.location + para.length
             let style = m.attribute(.paragraphStyle, at: para.location, effectiveRange: nil) as? NSParagraphStyle
-            guard let list = style?.textLists.last else { previous = nil; continue }
-            number = previous === list ? number + 1 : list.startingItemNumber
-            previous = list
+            let chain = style?.textLists ?? []
+            // Lists that don't enclose this paragraph have ended.
+            let open = Set(chain.map(ObjectIdentifier.init))
+            counters = counters.filter { open.contains($0.key) }
+            guard let list = chain.last else { continue }
+            number = counters[ObjectIdentifier(list)].map { $0 + 1 } ?? list.startingItemNumber
+            counters[ObjectIdentifier(list)] = number
             if ns.substring(with: para).hasPrefix("\t") { continue }
             var attrs = m.attributes(at: para.location, effectiveRange: nil)
             attrs[.link] = nil
@@ -194,7 +199,9 @@ enum NoteImages {
         let width = max(minWidth, width.rounded())
         let size = NSSize(width: width, height: max(1, (image.size.height * width / max(1, image.size.width)).rounded()))
         let sourcePixels = CGFloat(image.representations.map(\.pixelsWide).max() ?? 0)
-        let pixelWidth = min(maxPixelWidth, max(width * 2, sourcePixels > 0 ? sourcePixels : width * 2))
+        // Bitmaps keep their own pixels (capped): upsampling adds memory, not
+        // detail. Sources without pixel dimensions (vector) render at 2×.
+        let pixelWidth = min(maxPixelWidth, sourcePixels > 0 ? sourcePixels : width * 2)
         let pixelHeight = max(1, (pixelWidth * size.height / size.width).rounded())
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(pixelWidth), pixelsHigh: Int(pixelHeight),
                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
