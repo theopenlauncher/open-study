@@ -48,7 +48,14 @@ struct AppRoot: View {
 }
 
 struct OnboardingView: View {
-    let isRerun: Bool
+    /// Read once: finishing first-run setup marks it complete while this view
+    /// is still fading out, which would otherwise flip it to re-run wording.
+    @State private var isRerun: Bool
+
+    init(isRerun: Bool) {
+        _isRerun = State(initialValue: isRerun)
+    }
+
     @Environment(AppRouter.self) private var router
     @Environment(PomodoroEngine.self) private var engine
     @Environment(\.modelContext) private var context
@@ -83,7 +90,7 @@ struct OnboardingView: View {
                isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Nothing was changed, and your answers are still here. Try again, or skip setup and add things from the sidebar.\n\n\(saveError ?? "")")
+            Text("Your subjects, exams, habits and settings weren't saved, and your answers are still here. Try again, or skip setup and add things from the sidebar.\n\n\(saveError ?? "")")
         }
         .onAppear {
             originalAppearance = appearance
@@ -193,6 +200,7 @@ struct OnboardingView: View {
     // MARK: Actions
 
     private func next() {
+        draft?.commitPending()
         guard let nextStep = OnboardingStep(rawValue: step.rawValue + 1) else { return }
         step = nextStep
     }
@@ -203,6 +211,7 @@ struct OnboardingView: View {
     }
 
     private func finish(_ draft: OnboardingDraft) {
+        draft.commitPending()
         do {
             try Onboarding.apply(draft, context: context, engine: engine)
         } catch {

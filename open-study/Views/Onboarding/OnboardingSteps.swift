@@ -119,12 +119,11 @@ struct WelcomeStep: View {
 struct SubjectsStep: View {
     @Bindable var draft: OnboardingDraft
     let onSubmitEmpty: () -> Void
-    @State private var entry = ""
     @FocusState private var focused: Bool
 
     private var remainingSuggestions: [String] { SubjectGuess.suggestions.filter { !draft.hasSubject(named: $0) } }
     private var canAdd: Bool {
-        let t = entry.trimmingCharacters(in: .whitespaces)
+        let t = draft.pendingSubject.trimmingCharacters(in: .whitespaces)
         return !t.isEmpty && !draft.hasSubject(named: t)
     }
 
@@ -134,7 +133,7 @@ struct SubjectsStep: View {
                        subtitle: "Add each class or course. They appear in your sidebar straight away, each with a page of its own.")
 
             HStack(spacing: Space.sm) {
-                TextField("Subject", text: $entry, prompt: placeholder("e.g. Organic chemistry"))
+                TextField("Subject", text: $draft.pendingSubject, prompt: placeholder("e.g. Organic chemistry"))
                     .textFieldStyle(.os)
                     .focused($focused)
                     .onSubmit(submit)
@@ -144,8 +143,8 @@ struct SubjectsStep: View {
             }
             .frame(maxWidth: 420)
 
-            if !entry.isEmpty && draft.hasSubject(named: entry) {
-                Text("“\(entry.trimmingCharacters(in: .whitespaces))” is already on your list.")
+            if !draft.pendingSubject.isEmpty && draft.hasSubject(named: draft.pendingSubject) {
+                Text("“\(draft.pendingSubject.trimmingCharacters(in: .whitespaces))” is already on your list.")
                     .font(Typo.callout).foregroundStyle(Theme.textTertiary)
                     .padding(.top, Space.sm)
             }
@@ -180,13 +179,13 @@ struct SubjectsStep: View {
     }
 
     private func submit() {
-        if entry.trimmingCharacters(in: .whitespaces).isEmpty { onSubmitEmpty() } else { add() }
+        if draft.pendingSubject.trimmingCharacters(in: .whitespaces).isEmpty { onSubmitEmpty() } else { add() }
     }
 
     private func add() {
         guard canAdd else { return }
-        withAnimation(Motion.fade) { draft.addSubject(entry) }
-        entry = ""
+        withAnimation(Motion.fade) { draft.addSubject(draft.pendingSubject) }
+        draft.pendingSubject = ""
         focused = true
     }
 }
@@ -427,9 +426,11 @@ struct ExamsStep: View {
 
             if !draft.exams.isEmpty {
                 VStack(spacing: 0) {
-                    ForEach(Array($draft.exams.enumerated()), id: \.element.id) { i, $exam in
+                    // Bindings look rows up by id, so removing a row while its
+                    // field is being edited can't index past the end of the array.
+                    ForEach(Array(draft.exams.enumerated()), id: \.element.id) { i, exam in
                         if i > 0 { Rectangle().fill(Theme.border).frame(height: 1).padding(.leading, 40) }
-                        ExamRow(draft: draft, exam: $exam)
+                        ExamRow(draft: draft, exam: binding(for: exam))
                     }
                 }
                 .background(Theme.raised, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
@@ -441,6 +442,15 @@ struct ExamsStep: View {
                 .buttonStyle(.osSecondary)
         }
         .animation(Motion.fade, value: draft.exams)
+    }
+
+    private func binding(for exam: DraftExam) -> Binding<DraftExam> {
+        Binding(
+            get: { draft.exams.first { $0.id == exam.id } ?? exam },
+            set: { new in
+                if let i = draft.exams.firstIndex(where: { $0.id == exam.id }) { draft.exams[i] = new }
+            }
+        )
     }
 
     private func addExam() {
@@ -501,7 +511,6 @@ private struct ExamRow: View {
 
 struct HabitsStep: View {
     @Bindable var draft: OnboardingDraft
-    @State private var entry = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -533,12 +542,12 @@ struct HabitsStep: View {
             .overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).strokeBorder(Theme.border))
 
             HStack(spacing: Space.sm) {
-                TextField("Habit", text: $entry, prompt: placeholder("Add your own, e.g. Practise vocabulary"))
+                TextField("Habit", text: $draft.pendingHabit, prompt: placeholder("Add your own, e.g. Practise vocabulary"))
                     .textFieldStyle(.os)
                     .onSubmit(add)
                 Button("Add", action: add)
                     .buttonStyle(.osSecondary)
-                    .disabled(entry.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(draft.pendingHabit.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .frame(maxWidth: 420)
             .padding(.top, Space.md)
@@ -557,8 +566,8 @@ struct HabitsStep: View {
     }
 
     private func add() {
-        draft.addCustomHabit(entry)
-        entry = ""
+        draft.addCustomHabit(draft.pendingHabit)
+        draft.pendingHabit = ""
     }
 }
 

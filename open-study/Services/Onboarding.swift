@@ -134,6 +134,10 @@ final class OnboardingDraft {
     var habits: Set<String> = []
     var customHabits: [DraftHabit] = []
     var existingHabitNames: Set<String> = []
+    /// Text typed into the subject / habit fields but not yet added. Committed
+    /// when the user moves on, so clicking Continue doesn't drop it.
+    var pendingSubject = ""
+    var pendingHabit = ""
     var appearance = "system"
     var notifications = true
     var analytics = true
@@ -230,6 +234,18 @@ final class OnboardingDraft {
     }
 
     var chosenHabits: [DraftHabit] { habitSuggestions.filter(isHabitSelected) }
+
+    /// Adds anything left in the subject or habit fields.
+    func commitPending() {
+        if !pendingSubject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            addSubject(pendingSubject)
+            pendingSubject = ""
+        }
+        if !pendingHabit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            addCustomHabit(pendingHabit)
+            pendingHabit = ""
+        }
+    }
 
     // MARK: Derived
 
