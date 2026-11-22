@@ -90,7 +90,7 @@ struct OnboardingView: View {
                isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Your subjects, exams, habits and settings weren't saved, and your answers are still here. Try again, or skip setup and add things from the sidebar.\n\n\(saveError ?? "")")
+            Text("Your subjects, exams, habits and other settings weren't saved (the appearance you picked is already applied), and your answers are still here. Try again, or skip setup and add things from the sidebar.\n\n\(saveError ?? "")")
         }
         .onAppear {
             originalAppearance = appearance

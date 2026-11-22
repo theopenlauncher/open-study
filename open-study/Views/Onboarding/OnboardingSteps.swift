@@ -499,7 +499,10 @@ private struct ExamRow: View {
                 .font(Typo.callout.monospacedDigit()).foregroundStyle(Theme.textSecondary)
                 .frame(width: 72, alignment: .trailing)
             IconButton(symbol: "xmark", help: "Remove exam", size: 24) {
-                draft.exams.removeAll { $0.id == exam.id }
+                // Read the id first: `exam` is looked up in `draft.exams`, which
+                // `removeAll` is mutating, and overlapping access would trap.
+                let id = exam.id
+                draft.exams.removeAll { $0.id == id }
             }
         }
         .padding(.horizontal, Space.md)
