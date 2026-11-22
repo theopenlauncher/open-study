@@ -279,6 +279,16 @@ struct TaskEditor: View {
     @Bindable var task: TaskItem
     var onDelete: () -> Void
     @Query(sort: \Subject.sortIndex) private var subjects: [Subject]
+    /// The due date is edited as a draft and written back when the popover closes.
+    /// Writing it live moves the task between list groups (No date → Today → Upcoming),
+    /// which rebuilds the row that anchors this popover and dismisses it mid-edit.
+    @State private var draftDue: Date?
+
+    init(task: TaskItem, onDelete: @escaping () -> Void) {
+        self.task = task
+        self.onDelete = onDelete
+        _draftDue = State(initialValue: task.dueDate)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
@@ -292,14 +302,14 @@ struct TaskEditor: View {
             FieldRow(label: "Due date") {
                 HStack {
                     Toggle("Has due date", isOn: Binding(
-                        get: { task.dueDate != nil },
-                        set: { task.dueDate = $0 ? (task.dueDate ?? Calendar.current.startOfDay(for: .now)) : nil }
+                        get: { draftDue != nil },
+                        set: { draftDue = $0 ? (draftDue ?? Calendar.current.startOfDay(for: .now)) : nil }
                     ))
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
-                    if task.dueDate != nil {
-                        DatePicker("Due", selection: Binding(get: { task.dueDate ?? .now }, set: { task.dueDate = $0 }),
+                    if draftDue != nil {
+                        DatePicker("Due", selection: Binding(get: { draftDue ?? .now }, set: { draftDue = $0 }),
                                    displayedComponents: .date)
                             .labelsHidden()
                             .datePickerStyle(.field)
@@ -336,6 +346,12 @@ struct TaskEditor: View {
         }
         .padding(Space.xl)
         .frame(width: 340)
+        .onDisappear(perform: commitDue)
+    }
+
+    private func commitDue() {
+        guard !task.isDeleted, task.dueDate != draftDue else { return }
+        task.dueDate = draftDue
     }
 }
 
