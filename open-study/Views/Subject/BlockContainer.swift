@@ -63,7 +63,7 @@ struct BlockContainer<Content: View>: View {
                 .frame(width: 20, height: 22)
                 .hoverHighlight(cornerRadius: 5)
                 .contentShape(Rectangle())
-                .pointerStyle(.grabIdle)
+                .appCursor(.grab)
                 .help("Drag to move · Click for options")
                 .onTapGesture { showMenu = true }
                 .draggable(block.id.uuidString) {
@@ -229,7 +229,7 @@ struct BlockContainer<Content: View>: View {
                 .frame(width: 4, height: 32)
                 .frame(width: 12, height: 48)
                 .contentShape(Rectangle())
-                .pointerStyle(.frameResize(position: .trailing))
+                .appCursor(.resizeHorizontal)
                 .offset(x: 9)
                 .opacity(showChrome ? 1 : 0)
                 .gesture(
@@ -260,7 +260,7 @@ struct BlockContainer<Content: View>: View {
                 .frame(width: 32, height: 4)
                 .frame(width: 60, height: 12)
                 .contentShape(Rectangle())
-                .pointerStyle(.frameResize(position: .bottom))
+                .appCursor(.resizeVertical)
                 .offset(y: 7)
                 .opacity(showChrome ? 1 : 0)
                 .gesture(

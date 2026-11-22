@@ -764,7 +764,13 @@ final class NoteTextView: NSTextView {
     override func resetCursorRects() {
         super.resetCursorRects()
         if let selected = selectedImage {
-            addCursorRect(handleRect(for: selected.rect).insetBy(dx: -3, dy: -3), cursor: .frameResize(position: .bottomRight, directions: .all))
+            let cursor: NSCursor
+            if #available(macOS 15.0, *) {
+                cursor = .frameResize(position: .bottomRight, directions: .all)
+            } else {
+                cursor = .crosshair
+            }
+            addCursorRect(handleRect(for: selected.rect).insetBy(dx: -3, dy: -3), cursor: cursor)
         }
     }
 

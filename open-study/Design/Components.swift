@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 // MARK: - Buttons
 
@@ -647,5 +648,43 @@ struct FlowLayout: SwiftUI.Layout {
             rows[rows.count - 1].height = max(rows[rows.count - 1].height, size.height)
         }
         return rows.filter { !$0.indices.isEmpty }
+    }
+}
+
+// MARK: - Pointer cursors
+
+/// Hover cursors used by the editor chrome. `pointerStyle` needs macOS 15,
+/// so older systems fall back to the matching AppKit cursor.
+enum AppCursor {
+    case grab, resizeHorizontal, resizeVertical
+
+    @available(macOS 15.0, *)
+    var pointerStyle: PointerStyle {
+        switch self {
+        case .grab: .grabIdle
+        case .resizeHorizontal: .frameResize(position: .trailing)
+        case .resizeVertical: .frameResize(position: .bottom)
+        }
+    }
+
+    var nsCursor: NSCursor {
+        switch self {
+        case .grab: .openHand
+        case .resizeHorizontal: .resizeLeftRight
+        case .resizeVertical: .resizeUpDown
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func appCursor(_ cursor: AppCursor) -> some View {
+        if #available(macOS 15.0, *) {
+            pointerStyle(cursor.pointerStyle)
+        } else {
+            onHover { inside in
+                if inside { cursor.nsCursor.push() } else { NSCursor.pop() }
+            }
+        }
     }
 }

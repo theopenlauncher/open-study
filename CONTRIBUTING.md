@@ -66,7 +66,7 @@ Open Study intentionally stays calm and focused, so not every feature will be a 
 
 ### Prerequisites
 
-- A Mac running **macOS 26.5** or later
+- A Mac that can run Xcode 26 (the app itself runs on **macOS 14** or later)
 - **Xcode 26** or later
 - Git
 
