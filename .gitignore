@@ -2,3 +2,4 @@ build/
 .DS_Store
 xcuserdata/
 .env
+docs/releases/v1.0.0-prod.md
