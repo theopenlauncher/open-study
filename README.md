@@ -178,7 +178,7 @@ The app only requests **read-only** access to files you explicitly choose (for i
 
 ### Anonymous usage data
 
-Open Study can send a small amount of anonymous usage data to us with [PostHog](https://posthog.com) to help improve the app. This is not **on by default** and can be turned on at any time in **Settings → Privacy → Share anonymous usage data** or during the onboarding. When it is off, the analytics SDK is never started (or is shut down immediately), so the app makes no requests to PostHog at all.
+Open Study can send a small amount of anonymous usage data to us with [PostHog](https://posthog.com) to help improve the app. It is **on by default**, and you can turn it off during onboarding or at any time in **Settings → Privacy → Share anonymous usage data**. When it is off, the analytics SDK is never started (or is shut down immediately), so the app makes no requests to PostHog at all.
 
 When it is on, Open Study sends only:
 
