@@ -60,6 +60,8 @@ struct OnboardingView: View {
     @State private var step: OnboardingStep = .welcome
     /// Appearance before setup, restored if setup is skipped or cancelled.
     @State private var originalAppearance = "system"
+    /// Set when saving the workspace failed; setup stays open so the user can retry.
+    @State private var saveError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -77,6 +79,12 @@ struct OnboardingView: View {
         .background(Theme.canvas)
         .ignoresSafeArea(.container, edges: .top)
         .frame(minWidth: 960, minHeight: 640)
+        .alert("Open Study couldn't save your setup",
+               isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Nothing was changed, and your answers are still here. Try again, or skip setup and add things from the sidebar.\n\n\(saveError ?? "")")
+        }
         .onAppear {
             originalAppearance = appearance
             if draft == nil { draft = OnboardingDraft(existingSubjects: subjects, existingHabits: habits) }
@@ -195,7 +203,12 @@ struct OnboardingView: View {
     }
 
     private func finish(_ draft: OnboardingDraft) {
-        Onboarding.apply(draft, context: context, engine: engine)
+        do {
+            try Onboarding.apply(draft, context: context, engine: engine)
+        } catch {
+            saveError = error.localizedDescription
+            return
+        }
         router.selection = .home
         router.sidebarVisible = true
         router.showOnboarding = false

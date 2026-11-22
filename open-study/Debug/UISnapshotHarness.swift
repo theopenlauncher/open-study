@@ -35,7 +35,7 @@ enum UISnapshotHarness {
             case .rhythm: draft.dailyGoal = 180
             case .exams:
                 var exam = DraftExam(); exam.subjectID = draft.subjects.first?.id; draft.exams = [exam]
-            case .habits: draft.habits = ["Review flashcards", "Plan tomorrow"]
+            case .habits: draft.habits = Set(["Review flashcards", "Plan tomorrow"].map(OnboardingDraft.habitKey))
             default: break
             }
             step(s)

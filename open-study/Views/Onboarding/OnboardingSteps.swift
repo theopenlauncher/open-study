@@ -386,7 +386,7 @@ struct RhythmStep: View {
             .fixedSize(horizontal: false, vertical: true)
 
             if let custom = draft.keepCustomFocus {
-                Text("You currently use \(custom)-minute sessions. Pick a rhythm to change that, or continue to keep it.")
+                Text("You currently use \(custom)-minute sessions\(draft.customShortBreak.map { " with \($0)-minute breaks" } ?? ""). Pick a rhythm to change that, or continue to keep your timer as it is.")
                     .font(Typo.callout).foregroundStyle(Theme.textTertiary)
                     .padding(.top, Space.md)
             }
@@ -511,7 +511,7 @@ struct HabitsStep: View {
             VStack(spacing: 0) {
                 ForEach(Array(draft.habitSuggestions.enumerated()), id: \.element.id) { i, habit in
                     if i > 0 { Rectangle().fill(Theme.border).frame(height: 1).padding(.leading, 44) }
-                    let on = draft.habits.contains(habit.name)
+                    let on = draft.isHabitSelected(habit)
                     Button { toggle(habit) } label: {
                         HStack(spacing: Space.md) {
                             SquareCheckbox(isOn: on) { toggle(habit) }
@@ -553,7 +553,7 @@ struct HabitsStep: View {
     }
 
     private func toggle(_ habit: DraftHabit) {
-        if draft.habits.contains(habit.name) { draft.habits.remove(habit.name) } else { draft.habits.insert(habit.name) }
+        draft.toggleHabit(habit)
     }
 
     private func add() {

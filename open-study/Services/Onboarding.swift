@@ -35,7 +35,7 @@ struct DraftExam: Identifiable, Hashable {
 }
 
 struct DraftHabit: Identifiable, Hashable {
-    var id: String { name }
+    var id: String { OnboardingDraft.habitKey(name) }
     let name: String
     let symbol: String
 }
@@ -107,8 +107,13 @@ enum FocusRhythm: String, CaseIterable, Identifiable {
     var longBreak: Int { switch self { case .short: 10; case .classic: 15; case .deep: 20 } }
     var longEvery: Int { switch self { case .short: 4; case .classic: 4; case .deep: 3 } }
 
-    /// The preset matching the current settings, if any.
-    static func matching(focus: Int) -> FocusRhythm? { allCases.first { $0.focus == focus } }
+    /// The preset matching the whole timer configuration, if any. Focus length
+    /// alone isn't enough: custom breaks or cadence must survive a re-run.
+    static func matching(focus: Int, shortBreak: Int, longBreak: Int, longEvery: Int) -> FocusRhythm? {
+        allCases.first {
+            $0.focus == focus && $0.shortBreak == shortBreak && $0.longBreak == longBreak && $0.longEvery == longEvery
+        }
+    }
 }
 
 @MainActor
@@ -118,11 +123,14 @@ final class OnboardingDraft {
     var subjects: [DraftSubject] = []
     var tools: Set<StudyTool> = []
     var rhythm: FocusRhythm = .classic
-    /// Set when re-running with a custom focus length that matches no preset;
-    /// cleared as soon as the user picks one, so their setting is kept otherwise.
+    /// Set when re-running with a timer configuration that matches no preset;
+    /// cleared as soon as the user picks one, so their settings are kept otherwise.
     var keepCustomFocus: Int?
+    /// The custom short break that goes with `keepCustomFocus`, for display.
+    var customShortBreak: Int?
     var dailyGoal = 120
     var exams: [DraftExam] = []
+    /// Selected habits, by normalised name (`habitKey`).
     var habits: Set<String> = []
     var customHabits: [DraftHabit] = []
     var existingHabitNames: Set<String> = []
@@ -139,7 +147,15 @@ final class OnboardingDraft {
         let d = UserDefaults.standard
         name = d.string(forKey: PrefKey.userName) ?? ""
         let focus = d.integer(forKey: PrefKey.focusMinutes)
-        if let preset = FocusRhythm.matching(focus: focus) { rhythm = preset } else { keepCustomFocus = focus }
+        let shortBreak = d.integer(forKey: PrefKey.shortBreakMinutes)
+        if let preset = FocusRhythm.matching(focus: focus, shortBreak: shortBreak,
+                                             longBreak: d.integer(forKey: PrefKey.longBreakMinutes),
+                                             longEvery: d.integer(forKey: PrefKey.longBreakEvery)) {
+            rhythm = preset
+        } else {
+            keepCustomFocus = focus
+            customShortBreak = shortBreak
+        }
         dailyGoal = d.integer(forKey: PrefKey.dailyGoalMinutes)
         appearance = d.string(forKey: PrefKey.appearance) ?? "system"
         notifications = d.bool(forKey: PrefKey.notificationsEnabled)
@@ -147,7 +163,7 @@ final class OnboardingDraft {
         subjects = existingSubjects.map {
             DraftSubject(name: $0.name, symbol: $0.symbol, colorKey: $0.colorKey, existingID: $0.id)
         }
-        existingHabitNames = Set(existingHabits.map { $0.name.lowercased() })
+        existingHabitNames = Set(existingHabits.map { Self.habitKey($0.name) })
     }
 
     // MARK: Subjects
@@ -186,21 +202,34 @@ final class OnboardingDraft {
         list.append(DraftHabit(name: "Revise today's notes", symbol: "pencil"))
         if !tools.contains(.pdf) { list.append(DraftHabit(name: "Read for 20 minutes", symbol: "book")) }
         list.append(contentsOf: customHabits)
-        return list.filter { !existingHabitNames.contains($0.name.lowercased()) }
+        // One entry per normalised name (a custom habit may match a suggestion that
+        // appears later), and nothing the user already tracks.
+        var seen = existingHabitNames
+        return list.filter { seen.insert(Self.habitKey($0.name)).inserted }
+    }
+
+    nonisolated static func habitKey(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    func isHabitSelected(_ habit: DraftHabit) -> Bool { habits.contains(Self.habitKey(habit.name)) }
+
+    func toggleHabit(_ habit: DraftHabit) {
+        let key = Self.habitKey(habit.name)
+        if habits.contains(key) { habits.remove(key) } else { habits.insert(key) }
     }
 
     func addCustomHabit(_ raw: String) {
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
-        if !habitSuggestions.contains(where: { $0.name.lowercased() == name.lowercased() }) {
+        let key = Self.habitKey(name)
+        if !customHabits.contains(where: { Self.habitKey($0.name) == key }) {
             customHabits.append(DraftHabit(name: name, symbol: "checkmark.circle"))
         }
-        if let match = habitSuggestions.first(where: { $0.name.lowercased() == name.lowercased() }) {
-            habits.insert(match.name)
-        }
+        habits.insert(key)
     }
 
-    var chosenHabits: [DraftHabit] { habitSuggestions.filter { habits.contains($0.name) } }
+    var chosenHabits: [DraftHabit] { habitSuggestions.filter(isHabitSelected) }
 
     // MARK: Derived
 
@@ -275,10 +304,9 @@ enum Onboarding {
     }
 
     /// Writes the answers into the store and preferences. Only adds; never deletes.
-    static func apply(_ draft: OnboardingDraft, context: ModelContext, engine: PomodoroEngine) {
-        let d = UserDefaults.standard
-        d.set(draft.trimmedName, forKey: PrefKey.userName)
-
+    /// The store is saved first: if that fails, the inserts are rolled back, no
+    /// preference changes, setup stays open and a retry can't duplicate anything.
+    static func apply(_ draft: OnboardingDraft, context: ModelContext, engine: PomodoroEngine) throws {
         // Subjects, each with the empty tool blocks the user chose.
         let existing = (try? context.fetch(FetchDescriptor<Subject>())) ?? []
         var nextIndex = (existing.map(\.sortIndex).max() ?? -1) + 1
@@ -320,7 +348,17 @@ enum Onboarding {
             context.insert(Habit(name: habit.name, symbol: habit.symbol, sortIndex: habitBase + i))
         }
 
-        // Rhythm and goal. A custom focus length from before is kept unless a preset was picked.
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+
+        let d = UserDefaults.standard
+        d.set(draft.trimmedName, forKey: PrefKey.userName)
+
+        // Rhythm and goal. A custom timer from before is kept unless a preset was picked.
         if draft.keepCustomFocus == nil {
             d.set(draft.rhythm.focus, forKey: PrefKey.focusMinutes)
             d.set(draft.rhythm.shortBreak, forKey: PrefKey.shortBreakMinutes)
@@ -336,8 +374,6 @@ enum Onboarding {
         if draft.notifications { NotificationDelegate.requestAuthorization() }
         d.set(draft.analytics, forKey: PrefKey.analyticsEnabled)
         Analytics.setEnabled(draft.analytics)
-
-        try? context.save()
 
         // Counts and choices only — never names or titles.
         PostHogSDK.shared.capture("onboarding_completed", properties: [
