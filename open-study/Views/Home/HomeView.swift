@@ -37,9 +37,19 @@ struct HomeView: View {
 
     private var dueCards: [Flashcard] { cards.filter { $0.dueDate <= .now }.sorted { $0.dueDate < $1.dueDate } }
 
+    private var endOfToday: Date { cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: .now))! }
+
     private var todayTasks: [TaskItem] {
-        let end = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: .now))!
+        let end = endOfToday
         return tasks.filter { !$0.isDone && ($0.dueDate ?? .distantFuture) < end }.sorted(by: TaskOrdering.comparator(.due))
+    }
+
+    /// The next few open tasks due after today, soonest first.
+    private var upcomingTasks: [TaskItem] {
+        let end = endOfToday
+        return Array(tasks.filter { t in !t.isDone && t.dueDate.map { $0 >= end } == true }
+            .sorted(by: TaskOrdering.comparator(.due))
+            .prefix(3))
     }
 
     private var upcomingExams: [StudyEvent] {
@@ -140,6 +150,12 @@ struct HomeView: View {
                 if todayTasks.count > 6 {
                     Text("+\(todayTasks.count - 6) more in Tasks").font(Typo.callout).foregroundStyle(Theme.textTertiary)
                 }
+            }
+            let upcoming = upcomingTasks
+            if !upcoming.isEmpty {
+                SectionLabel("Up next")
+                    .padding(.top, Space.sm)
+                TaskListCard(tasks: upcoming)
             }
         }
     }
