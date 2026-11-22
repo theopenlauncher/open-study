@@ -305,7 +305,7 @@ Examples:
 ### Home
 - Title: time-of-day greeting in `display` ("Good afternoon"), date as subtitle.
 - Row 1: **Ink hero card** (start focus / live timer) + **stat tile column** (today's focus minutes, cards due, current streak) — the reference's banner + stats composition.
-- Below: `TODAY` label → due/overdue tasks; `HABITS` → today's habit checklist; `UPCOMING EXAMS` → countdown rows; `SUBJECTS` → compact subject cards.
+- Below: `TODAY` label → due/overdue tasks, then `UP NEXT` → the next three tasks due after today; `HABITS` → today's habit checklist; `UPCOMING EXAMS` → countdown rows; `SUBJECTS` → compact subject cards.
 - Sections with no data hide or show a one-line hint — no large empty boxes on the dashboard.
 
 ### Subject page
