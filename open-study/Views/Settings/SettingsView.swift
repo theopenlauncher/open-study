@@ -10,6 +10,8 @@ import UserNotifications
 struct SettingsView: View {
     var isWindow = false
     @Environment(PomodoroEngine.self) private var engine
+    @Environment(AppRouter.self) private var router
+    @Environment(\.openWindow) private var openWindow
     @Query private var documents: [StudyDocument]
 
     @AppStorage(PrefKey.focusMinutes) private var focusMinutes = 25
@@ -102,6 +104,14 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
             }
+            Section("Setup") {
+                LabeledContent {
+                    Button("Run Setup Again…", action: runSetupAgain)
+                } label: {
+                    Text("Personalise Open Study")
+                    Text("Add subjects, exams and habits, or change your rhythm. Nothing you already have is removed.")
+                }
+            }
             Section("Data") {
                 LabeledContent("Storage", value: "On this Mac only — no account or internet needed")
                 LabeledContent("Imported PDFs", value: "\(documents.count)")
@@ -118,6 +128,18 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+
+    /// Setup is shown in the main window. Bring it forward, or open one if it was
+    /// closed (opening unconditionally would add a second main window).
+    private func runSetupAgain() {
+        router.showOnboarding = true
+        if let main = NSApp.windows.first(where: { $0.title == "Open Study" && ($0.isVisible || $0.isMiniaturized) }) {
+            if main.isMiniaturized { main.deminiaturize(nil) }
+            main.makeKeyAndOrderFront(nil)
+        } else {
+            openWindow(id: "main")
+        }
     }
 
     private func refreshAuth() async {

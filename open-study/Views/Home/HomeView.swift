@@ -23,13 +23,9 @@ struct HomeView: View {
 
     private var cal: Calendar { .current }
 
-    private var greeting: String {
-        switch cal.component(.hour, from: .now) {
-        case 5..<12: "Good morning"
-        case 12..<18: "Good afternoon"
-        default: "Good evening"
-        }
-    }
+    @AppStorage(PrefKey.userName) private var userName = ""
+
+    private var greeting: String { Greeting.now(name: userName) }
 
     private var todayFocus: Double {
         sessions.filter { cal.isDateInToday($0.startedAt) }.reduce(0) { $0 + $1.seconds }

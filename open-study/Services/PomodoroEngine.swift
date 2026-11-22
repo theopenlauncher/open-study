@@ -40,6 +40,10 @@ enum PrefKey {
     static let appearance = "appearance"
     static let sidebarVisible = "sidebarVisible"
     static let analyticsEnabled = "analyticsEnabled"
+    /// Deliberately not registered: its absence means "never decided" (see `Onboarding.migrateExistingUser`).
+    static let onboardingCompleted = "onboardingCompleted"
+    /// First name from onboarding, used for the Home greeting.
+    static let userName = "userName"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
