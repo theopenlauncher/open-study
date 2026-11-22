@@ -423,6 +423,9 @@ struct SidebarRow: View {
 
 struct SubjectEditor: View {
     let subject: Subject?
+    /// Name, symbol and colour to start from when editing something that
+    /// isn't saved yet (a subject drafted during onboarding).
+    var initial: (name: String, symbol: String, color: String)? = nil
     let onSave: (String, String, String) -> Void
 
     @State private var name = ""
@@ -438,7 +441,7 @@ struct SubjectEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
-            Text(subject == nil ? "New subject" : "Edit subject").font(Typo.title)
+            Text(subject == nil && initial == nil ? "New subject" : "Edit subject").font(Typo.title)
             TextField("Subject name, e.g. Physics", text: $name)
                 .textFieldStyle(.os)
                 .focused($nameFocused)
@@ -481,7 +484,7 @@ struct SubjectEditor: View {
 
             HStack {
                 Spacer()
-                Button(subject == nil ? "Create subject" : "Save", action: save)
+                Button(subject == nil && initial == nil ? "Create subject" : "Save", action: save)
                     .buttonStyle(.osPrimary)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -494,6 +497,10 @@ struct SubjectEditor: View {
                 name = subject.name
                 symbol = subject.symbol
                 color = subject.colorKey
+            } else if let initial {
+                name = initial.name
+                symbol = initial.symbol
+                color = initial.color
             } else {
                 color = SubjectColor.allCases.randomElement()?.rawValue ?? "slate"
             }

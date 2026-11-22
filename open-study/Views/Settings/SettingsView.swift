@@ -10,6 +10,7 @@ import UserNotifications
 struct SettingsView: View {
     var isWindow = false
     @Environment(PomodoroEngine.self) private var engine
+    @Environment(AppRouter.self) private var router
     @Query private var documents: [StudyDocument]
 
     @AppStorage(PrefKey.focusMinutes) private var focusMinutes = 25
@@ -101,6 +102,14 @@ struct SettingsView: View {
                     Text("Dark").tag("dark")
                 }
                 .pickerStyle(.segmented)
+            }
+            Section("Setup") {
+                LabeledContent {
+                    Button("Run Setup Again…") { router.showOnboarding = true }
+                } label: {
+                    Text("Personalise Open Study")
+                    Text("Add subjects, exams and habits, or change your rhythm. Nothing you already have is removed.")
+                }
             }
             Section("Data") {
                 LabeledContent("Storage", value: "On this Mac only — no account or internet needed")

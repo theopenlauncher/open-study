@@ -36,6 +36,13 @@ struct open_studyApp: App {
             PostHogAppLogger.studyStoreInitializationFailed()
         }
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+        if case .success(let container) = container {
+            #if DEBUG
+            if !UISnapshotHarness.isEnabled { Onboarding.migrateExistingUser(container: container) }
+            #else
+            Onboarding.migrateExistingUser(container: container)
+            #endif
+        }
     }
 
     var body: some Scene {
@@ -43,7 +50,7 @@ struct open_studyApp: App {
             Group {
                 switch container {
                 case .success(let container):
-                    ContentView()
+                    AppRoot()
                         .modelContainer(container)
                 case .failure(let error):
                     StorageErrorView(error: error)
@@ -71,6 +78,7 @@ struct open_studyApp: App {
             if case .success(let container) = container {
                 SettingsView(isWindow: true)
                     .modelContainer(container)
+                    .environment(router)
                     .environment(engine)
                     .appearancePreference()
             }

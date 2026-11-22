@@ -112,7 +112,8 @@ struct ContentView: View {
     }
 }
 
-private struct WorkspaceCard<Content: View>: View {
+/// The inset off-white workspace card (DESIGN.md §5). Also frames onboarding.
+struct WorkspaceCard<Content: View>: View {
     @ViewBuilder let content: () -> Content
     var body: some View {
         content()

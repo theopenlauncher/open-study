@@ -13,7 +13,7 @@ Reference material lives in [`docs/design-reference/`](docs/design-reference):
 
 Implementation of these tokens lives in `open-study/Design/Theme.swift` and the reusable components in `open-study/Design/Components.swift`. The `AccentColor` asset mirrors `accent` so native controls (toggles, focus rings, selection) pick it up.
 
-**Visual verification.** Debug builds include `Debug/UISnapshotHarness.swift`. Launching the binary with `-uiSnapshots` (add `-uiSnapshotsEmpty` for first-run state, `-uiSnapshotsDark` for dark mode, `-uiSnapshotsQuit` to exit afterwards) uses an in-memory store — real data is never touched — and writes PNGs of every screen to the app container's `tmp/snapshots`. Use it to review changes against this document.
+**Visual verification.** Debug builds include `Debug/UISnapshotHarness.swift`. Launching the binary with `-uiSnapshots` (add `-uiSnapshotsEmpty` for first-run state, `-uiSnapshotsDark` for dark mode, `-uiSnapshotsQuit` to exit afterwards) uses an in-memory store — real data is never touched — and writes PNGs of every screen to the app container's `tmp/snapshots`. Add `-uiSnapshotsOnboarding` to capture every onboarding step instead, and `-uiSnapshotsStdout` to also print each PNG to stdout as base64 (for tools that can't read the sandboxed container). Use it to review changes against this document.
 
 ---
 
@@ -358,8 +358,18 @@ Examples:
 ### Habits
 - Habit rows: symbol, name, 7-day dot strip (filled `ink` = done), streak "🔥"-free text ("5 days"), toggle for today. Manager sheet shows 16-week heatmap per habit with current/longest streak.
 
+### Onboarding
+- Shown once on first launch, full-window, built from the app's own shell: the sidebar sits on `canvas` where the real one lives, and each question sits inside the workspace card. The sidebar is a **live, non-interactive preview** that fills in with the user's subjects as they answer, with a `callout` `textTertiary` line explaining that.
+- **Personalisation, not a tour.** Every step asks one question whose answer is written into the real workspace, and shows the effect rather than explaining features: the name step's title *is* the Home greeting ("Good evening, Sam"), the tools step shows a miniature of the subject page, the rhythm step derives sessions-per-day from the goal, exams show their countdown, appearance applies live.
+- Steps: name → subjects → study tools → focus rhythm + daily goal → exams → habits → appearance, notifications & privacy → summary. Header row: `label` "STEP n OF 7" + a 2pt `accent` progress bar; title in `display`, subtitle `body` `textSecondary`; content column max 620pt. Footer: ghost "Back", optional one-line `callout` hint, one `primary` button.
+- Option cards (tools, rhythm, appearance) use the quiz-option treatment: `raised` + `border`; selected = `accentSoft` fill + 1.5pt `accent` border.
+- **Blank by default still holds.** Study tools add *empty* widget blocks (in setup state, no sample content) only to subjects created during onboarding. Choosing no tools keeps pages blank. Subject icons are guessed from the name and colours assigned without repeats; both editable via the subject editor popover.
+- Everything is optional; "Skip setup" (top-right) writes nothing except that setup was seen. Settings → Setup → "Run setup again…" re-runs it prefilled from current preferences. Re-runs are **additive only**: existing subjects show as "Already in your sidebar" and are never edited or removed, existing habits aren't suggested again, and a custom focus length is kept unless a preset is picked.
+- Existing users (a store with subjects but no onboarding flag) are never shown first-run setup.
+- Analytics records counts and choices only (`onboarding_completed`, `onboarding_skipped`), never names or titles.
+
 ### Settings
-- Native `Form` with `.grouped` style inside the workspace card; sections: Focus timer, Notifications (including the end-of-phase Sound picker, which previews on change), Study goal, Appearance, Data.
+- Native `Form` with `.grouped` style inside the workspace card; sections: Focus timer, Notifications (including the end-of-phase Sound picker, which previews on change), Study goal, Appearance, Setup ("Run setup again…"), Data, Privacy.
 
 ---
 

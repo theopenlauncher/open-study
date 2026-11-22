@@ -55,6 +55,8 @@ final class AppRouter {
     var pendingDeckID: UUID?
     /// Triggers the "new subject" popover in the sidebar.
     var showNewSubject = false
+    /// Re-runs setup from Settings. First-run setup is driven by `PrefKey.onboardingCompleted`.
+    var showOnboarding = false
     private(set) var lastNonFocus: SidebarItem = .home
 
     /// Subjects whose topic pages are listed in the sidebar (persisted).

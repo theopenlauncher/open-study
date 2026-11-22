@@ -15,6 +15,36 @@ import AppKit
 enum UISnapshotHarness {
     static var isEnabled: Bool { ProcessInfo.processInfo.arguments.contains("-uiSnapshots") }
     static var seedEnabled: Bool { !ProcessInfo.processInfo.arguments.contains("-uiSnapshotsEmpty") }
+    /// Show and capture onboarding steps instead of the app's screens.
+    static var onboardingEnabled: Bool { ProcessInfo.processInfo.arguments.contains("-uiSnapshotsOnboarding") }
+    /// Also print each PNG to stdout as base64, for tools that can't read the sandboxed container.
+    static var stdoutEnabled: Bool { ProcessInfo.processInfo.arguments.contains("-uiSnapshotsStdout") }
+
+    /// Fills in sample answers and captures every onboarding step.
+    @MainActor
+    static func runOnboarding(draft: () -> OnboardingDraft?, step: (OnboardingStep) -> Void) async {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("snapshots", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? await Task.sleep(for: .seconds(1.5))
+        guard let draft = draft() else { return }
+        for s in OnboardingStep.allCases {
+            switch s {
+            case .welcome: draft.name = "Sam"
+            case .subjects: ["Physics", "Further maths", "English literature", "Computer science"].forEach(draft.addSubject)
+            case .tools: draft.tools = [.tasks, .flashcards, .pdf]
+            case .rhythm: draft.dailyGoal = 180
+            case .exams:
+                var exam = DraftExam(); exam.subjectID = draft.subjects.first?.id; draft.exams = [exam]
+            case .habits: draft.habits = ["Review flashcards", "Plan tomorrow"]
+            default: break
+            }
+            step(s)
+            try? await Task.sleep(for: .seconds(1))
+            capture(to: dir.appendingPathComponent("onboarding-\(s.rawValue)-\(s).png"))
+        }
+        print("SNAPSHOTS_DONE \(dir.path)")
+        if ProcessInfo.processInfo.arguments.contains("-uiSnapshotsQuit") { NSApp.terminate(nil) }
+    }
 
     static func seed(_ context: ModelContext) {
         guard seedEnabled else { return }
@@ -184,7 +214,9 @@ enum UISnapshotHarness {
         (view.window?.appearance ?? NSAppearance.currentDrawing()).performAsCurrentDrawingAppearance {
             view.cacheDisplay(in: view.bounds, to: rep)
         }
-        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+        let png = rep.representation(using: .png, properties: [:])
+        try? png?.write(to: url)
+        if stdoutEnabled, let png { print("SNAPSHOT_B64 \(url.lastPathComponent) \(png.base64EncodedString())") }
     }
 }
 #endif
