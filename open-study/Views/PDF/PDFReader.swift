@@ -22,9 +22,20 @@ final class PDFController {
     var pageCount = 0
     var hasSelection = false
     var annotationsVersion = 0
+    /// Highlighter mode: every text selection is highlighted as soon as the
+    /// mouse is released, until the mode is switched off.
+    var isHighlighting = false
 
     func attach(_ view: PDFView) {
         self.view = view
+        if let view = view as? StudyPDFView {
+            view.onSelectionFinished = { [weak self] in self?.selectionFinished() }
+            view.onEscape = { [weak self] in
+                guard let self, self.isHighlighting else { return false }
+                self.isHighlighting = false
+                return true
+            }
+        }
         pageCount = view.document?.pageCount ?? 0
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = [
@@ -59,8 +70,24 @@ final class PDFController {
     func zoomOut() { view?.zoomOut(nil) }
     func fit() { view?.autoScales = true }
 
+    /// The Highlight button: highlights the current selection if there is one,
+    /// otherwise switches highlighter mode on or off.
+    func highlightTapped() {
+        if hasSelection {
+            highlightSelection()
+        } else {
+            isHighlighting.toggle()
+        }
+    }
+
+    private func selectionFinished() {
+        guard isHighlighting, hasSelection else { return }
+        highlightSelection()
+    }
+
     func highlightSelection() {
-        guard let view, let selection = view.currentSelection else { return }
+        guard let view, let selection = view.currentSelection,
+              !(selection.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         for line in selection.selectionsByLine() {
             guard let page = line.pages.first else { continue }
             let bounds = line.bounds(for: page)
@@ -69,6 +96,7 @@ final class PDFController {
             page.addAnnotation(annotation)
         }
         view.clearSelection()
+        hasSelection = false
         changed()
     }
 
@@ -148,13 +176,30 @@ final class PDFController {
     }
 }
 
+/// PDFView that reports when a mouse selection ends and lets Esc leave
+/// highlighter mode.
+final class StudyPDFView: PDFView {
+    var onSelectionFinished: (() -> Void)?
+    /// Returns true when it handled the key.
+    var onEscape: (() -> Bool)?
+
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        onSelectionFinished?()
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if onEscape?() != true { super.cancelOperation(sender) }
+    }
+}
+
 struct PDFKitView: NSViewRepresentable {
     let pdf: PDFDocument
     let controller: PDFController
     let startPage: Int
 
     func makeNSView(context: Context) -> PDFView {
-        let view = PDFView()
+        let view = StudyPDFView()
         view.document = pdf
         view.autoScales = true
         view.displayMode = .singlePageContinuous
@@ -201,6 +246,10 @@ struct PDFReader: View {
             } else if let pdf {
                 toolbar
                 Divider().overlay(Theme.border)
+                if controller.isHighlighting {
+                    highlighterHint
+                    Divider().overlay(Theme.border)
+                }
                 PDFKitView(pdf: pdf, controller: controller, startPage: document.lastPage)
             } else {
                 HStack(spacing: 8) {
@@ -256,12 +305,13 @@ struct PDFReader: View {
             IconButton(symbol: "plus.magnifyingglass", help: "Zoom in", size: 26) { controller.zoomIn() }
             IconButton(symbol: "arrow.up.left.and.down.right.magnifyingglass", help: "Fit to width", size: 26) { controller.fit() }
             Spacer(minLength: Space.sm)
-            Button { controller.highlightSelection() } label: {
-                Label("Highlight", systemImage: "highlighter")
+            Button { controller.highlightTapped() } label: {
+                Label(controller.isHighlighting ? "Highlighting" : "Highlight", systemImage: "highlighter")
             }
-            .buttonStyle(OSButtonStyle(variant: .ghost, compact: true))
-            .disabled(!controller.hasSelection)
-            .help(controller.hasSelection ? "Highlight the selected text" : "Select text in the PDF to highlight it")
+            .buttonStyle(OSButtonStyle(variant: controller.isHighlighting ? .primary : .ghost, compact: true))
+            .help(controller.hasSelection ? "Highlight the selected text"
+                  : controller.isHighlighting ? "Stop highlighting (Esc)"
+                  : "Turn on the highlighter, then select text to highlight it")
             Button { noteText = ""; showNote = true } label: {
                 Label("Note", systemImage: "note.text.badge.plus")
             }
@@ -310,6 +360,23 @@ struct PDFReader: View {
         }
         .padding(.horizontal, Space.sm)
         .frame(height: 40)
+    }
+
+    private var highlighterHint: some View {
+        HStack(spacing: Space.sm) {
+            Image(systemName: "highlighter").font(.system(size: 12)).foregroundStyle(Theme.accent)
+            Text("Highlighter is on — select text in the PDF to highlight it.")
+                .font(Typo.callout)
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+            Spacer(minLength: Space.sm)
+            Button("Done") { controller.isHighlighting = false }
+                .buttonStyle(OSButtonStyle(variant: .secondary, compact: true))
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, Space.md)
+        .frame(height: 34)
+        .background(Theme.accentSoft)
     }
 
     private var missingView: some View {
