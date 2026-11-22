@@ -349,7 +349,7 @@ Examples:
 - Taking: one question at a time, progress bar (2pt, `accent`), options as full-width selectable rows (radius 8, `border`; selected = `accentSoft` + accent border). Results: big `numeral` score, then incorrect questions listed with your answer (danger) vs correct (success).
 
 ### PDF
-- Reader: native `PDFView` on `surface`, a slim toolbar (page x / y, prev/next, zoom, Highlight, Note, Annotations list). Highlights use system yellow at 45% alpha (the one place we allow it — it's the universal highlighter metaphor).
+- Reader: native `PDFView` on `surface`, a slim toolbar (page x / y, prev/next, zoom, Highlight, Note, Annotations list). Highlights use system yellow at 45% alpha (the one place we allow it — it's the universal highlighter metaphor). Highlight is never disabled: with text selected it highlights the selection; otherwise it turns on highlighter mode (button shown as primary, an `accentSoft` hint bar with Done/Esc) where each selection is highlighted on mouse-up.
 
 ### Statistics
 - Range picker (7 days · 30 days · 90 days). KPI tiles row (stat tiles), then charts in cards: Study time per day (bars, `ink` 85%), Reviews per day (bars, `accent`), Focus by subject (horizontal bars in subject colours), Activity heatmap (`ink` at 15/35/60/85% steps on `muted`).
