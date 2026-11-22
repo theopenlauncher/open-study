@@ -134,7 +134,8 @@ struct SettingsView: View {
     /// closed (opening unconditionally would add a second main window).
     private func runSetupAgain() {
         router.showOnboarding = true
-        if let main = NSApp.windows.first(where: { $0.title == "Open Study" && $0.isVisible }) {
+        if let main = NSApp.windows.first(where: { $0.title == "Open Study" && ($0.isVisible || $0.isMiniaturized) }) {
+            if main.isMiniaturized { main.deminiaturize(nil) }
             main.makeKeyAndOrderFront(nil)
         } else {
             openWindow(id: "main")
