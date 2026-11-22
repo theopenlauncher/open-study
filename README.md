@@ -9,7 +9,7 @@ Notes, flashcards, PDFs, quizzes, tasks and a focus timer — organised by subje
 
 [![License: AGPL v3](https://img.shields.io/github/license/theopenlauncher/open-study?color=4A5BD0)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/theopenlauncher/open-study?include_prereleases&sort=semver&color=3E8A5A)](https://github.com/theopenlauncher/open-study/releases)
-[![Platform: macOS 26.5+](https://img.shields.io/badge/platform-macOS%2026.5%2B-1E1C19?logo=apple&logoColor=white)](#requirements)
+[![Platform: macOS 14+](https://img.shields.io/badge/platform-macOS%2014%2B-1E1C19?logo=apple&logoColor=white)](#requirements)
 [![Swift](https://img.shields.io/badge/Swift-5-F05138?logo=swift&logoColor=white)](https://www.swift.org)
 [![SwiftUI + SwiftData](https://img.shields.io/badge/built%20with-SwiftUI%20%2B%20SwiftData-0A84FF?logo=swift&logoColor=white)](https://developer.apple.com/xcode/swiftui/)
 <br>
@@ -113,8 +113,8 @@ Pre-built versions of Open Study are published on the **[Releases page](https://
 
 | | Minimum |
 | --- | --- |
-| **Run** | macOS 26.5 or later |
-| **Build** | Xcode 26 or later (with the macOS 26.5 SDK) |
+| **Run** | macOS 14 Sonoma or later |
+| **Build** | Xcode 26 or later |
 
 ## Building from source
 
