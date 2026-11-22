@@ -37,6 +37,8 @@ final class PDFController {
             }
         }
         pageCount = view.document?.pageCount ?? 0
+        // A replacement view mustn't inherit the previous view's selection state.
+        hasSelection = !(view.currentSelection?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = [
             NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: view, queue: .main) { [weak self] _ in
