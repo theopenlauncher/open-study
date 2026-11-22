@@ -90,7 +90,9 @@ final class PDFController {
     }
 
     struct Item: Identifiable {
-        let id = UUID()
+        /// Tied to the annotation itself so rows keep their identity (and their
+        /// editing state) when the list is rebuilt.
+        var id: ObjectIdentifier { ObjectIdentifier(annotation) }
         let annotation: PDFAnnotation
         let pageIndex: Int
         let isNote: Bool
@@ -122,8 +124,12 @@ final class PDFController {
     }
 
     func updateNote(_ item: Item, text: String) {
+        guard item.annotation.contents != text else { return }
         item.annotation.contents = text
-        changed()
+        // Editing a note doesn't add or remove anything from the list, so only
+        // save; bumping `annotationsVersion` here would rebuild the list on
+        // every keystroke while its text field is being laid out.
+        onAnnotationsChanged?()
     }
 
     func reveal(_ item: Item) {
@@ -185,6 +191,8 @@ struct PDFReader: View {
     @State private var showNote = false
     @State private var noteText = ""
     @State private var showAnnotations = false
+    @State private var window: NSWindow?
+    @State private var isFullScreen = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -202,6 +210,13 @@ struct PDFReader: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .background(WindowReader { window = $0 })
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { note in
+            if note.object as? NSWindow === window { isFullScreen = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { note in
+            if note.object as? NSWindow === window { isFullScreen = false }
+        }
         .onAppear(perform: load)
         .onDisappear {
             DocumentStore.shared.saveNow(fileName: document.fileName)
@@ -216,6 +231,9 @@ struct PDFReader: View {
         pdf = loaded
         controller.onPageChange = { [document] page in document.lastPage = page }
         controller.onAnnotationsChanged = { [document] in DocumentStore.shared.scheduleSave(document) }
+        // `onDisappear` detaches the page/selection observers; re-attach if the
+        // same PDFView comes back on screen.
+        if let view = controller.view { controller.attach(view) }
     }
 
     private var toolbar: some View {
@@ -275,6 +293,18 @@ struct PDFReader: View {
             if compact {
                 IconButton(symbol: "macwindow", help: "Open in its own window", size: 26) {
                     openWindow(id: "pdf", value: document.id)
+                }
+            }
+            let showsExit = !compact && isFullScreen
+            IconButton(symbol: showsExit ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                       help: showsExit ? "Exit full screen" : "Full screen", size: 26) {
+                if compact {
+                    // An inline block can't fill the screen on its own, so open the
+                    // reader window and take that full screen.
+                    openWindow(id: "pdf", value: document.id)
+                    PDFWindowRequests.request(document.id)
+                } else {
+                    window?.toggleFullScreen(nil)
                 }
             }
         }
@@ -339,7 +369,13 @@ private struct AnnotationList: View {
 private struct AnnotationRow: View {
     let item: PDFController.Item
     let controller: PDFController
-    @State private var text = ""
+    @State private var text: String
+
+    init(item: PDFController.Item, controller: PDFController) {
+        self.item = item
+        self.controller = controller
+        _text = State(initialValue: item.text)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: Space.sm) {
@@ -367,7 +403,42 @@ private struct AnnotationRow: View {
         .contentShape(Rectangle())
         .onTapGesture { controller.reveal(item) }
         .hoverHighlight(cornerRadius: 0)
-        .onAppear { text = item.text }
+    }
+}
+
+/// Reader windows asked to open straight into full screen (from an inline block).
+@MainActor
+enum PDFWindowRequests {
+    static var fullScreen: Set<UUID> = []
+    static let didRequest = Notification.Name("PDFWindowRequests.didRequest")
+
+    static func request(_ id: UUID) {
+        fullScreen.insert(id)
+        NotificationCenter.default.post(name: didRequest, object: nil)
+    }
+}
+
+/// Hands back the NSWindow hosting a SwiftUI view once it's in a window.
+private struct WindowReader: NSViewRepresentable {
+    let onWindow: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView { WindowReaderView(onWindow: onWindow) }
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    private final class WindowReaderView: NSView {
+        let onWindow: (NSWindow?) -> Void
+        init(onWindow: @escaping (NSWindow?) -> Void) {
+            self.onWindow = onWindow
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            let window = self.window
+            // Report on the next turn so SwiftUI state isn't changed mid-update.
+            DispatchQueue.main.async { [onWindow] in onWindow(window) }
+        }
     }
 }
 
@@ -391,5 +462,22 @@ struct PDFReaderWindow: View {
         }
         .frame(minWidth: 520, minHeight: 480)
         .background(Theme.surface)
+        .background(WindowReader { window in
+            self.window = window
+            window?.collectionBehavior.insert(.fullScreenPrimary)
+            enterFullScreenIfRequested()
+        })
+        // The window may already be open, in which case openWindow only brings
+        // it forward and the reader above doesn't fire again.
+        .onReceive(NotificationCenter.default.publisher(for: PDFWindowRequests.didRequest)) { _ in
+            DispatchQueue.main.async { enterFullScreenIfRequested() }
+        }
+    }
+
+    @State private var window: NSWindow?
+
+    private func enterFullScreenIfRequested() {
+        guard let window, PDFWindowRequests.fullScreen.remove(documentID) != nil else { return }
+        if !window.styleMask.contains(.fullScreen) { window.toggleFullScreen(nil) }
     }
 }
